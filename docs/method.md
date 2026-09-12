@@ -11,23 +11,39 @@ Nothing here predicts anything. Each score describes a condition measured at a r
 
 | Input | Source | Direction | Draft weight |
 |---|---|---|---|
-| Fear and greed index | CMC (endpoint TBC) | higher = louder | 0.40 |
-| Social / community volume, market-wide | CMC community endpoints | higher = louder | 0.60 |
+| Fear and greed index | `/v3/fear-and-greed/latest` | higher = louder | 0.40 |
+| Community and search attention — trending rank churn, most-visited | `/v1/community/trending/*`, `/v1/cryptocurrency/trending/most-visited` | higher = louder | 0.35 |
+| Community post volume | `/v1/content/latest` | higher = louder | 0.25 |
+
+All three paths are confirmed to exist. Whether the Startup plan may call them is open question 1.
 
 ### Money — what the market has committed
 
+**Read this first.** This axis was designed around funding rates, open interest and liquidations.
+None of those exist on the CoinMarketCap API — 38 candidate paths probed on 12 September 2026, all
+absent, and not as a plan restriction (see `endpoint-access.md` and decision D10). What follows is
+the substitute, and it is weaker. That sentence appears on the public method page too.
+
 | Input | Source | Direction | Draft weight |
 |---|---|---|---|
-| Weighted funding rate | CMC derivatives | further from zero = more committed | 0.40 |
-| Open interest, level and 7d change | CMC derivatives | higher = more committed | 0.40 |
-| Liquidations, 24h | CMC derivatives | higher = more forced exposure | 0.20 |
+| Turnover — `volume_24h / market_cap` | `/v2/cryptocurrency/quotes/latest` | higher = more money moving per unit of size | 0.50 |
+| Exchange concentration — HHI of 24h volume across venues | `/v1/exchange/listings/latest` | higher = flow concentrated in fewer venues | 0.25 |
+| Exchange reserve movement — change in held balances | `/v1/exchange/assets` | larger movement = more repositioning | 0.25 |
 
-Weights are drafts. They will change once real distributions are visible, and when they do the
-`method_version` column bumps rather than the history being rewritten.
+**What this axis can and cannot see.** Turnover measures money *moving*. It cannot distinguish a
+large spot rotation from a leveraged build-up, because nothing in the available data carries
+leverage. The original axis would have measured money *committed and at risk*; this one measures
+money *changing hands*. Those are different things and the app must not imply otherwise.
 
-**If derivatives are unavailable on our tier**, the Money axis falls back to volume concentration
-and exchange reserve movement. Weaker, and the method page must say so plainly. See
-`open-questions.md` item 2.
+**Two inputs that would strengthen it**, both payload inspections rather than new endpoints, and
+both unresolved until a real key exists:
+
+- `derivatives_volume_24h` on `/v1/global-metrics/quotes/latest`, if that field is present — the
+  one positioning number that might still be reachable.
+- open interest on `/v2/cryptocurrency/market-pairs/latest?category=derivatives`, if it carries it.
+
+If either lands, it takes weight from turnover and `method_version` bumps rather than the history
+being rewritten.
 
 ### Divergence
 
@@ -69,10 +85,11 @@ So for the first seven days, each input is min-max scaled against a hand-set ref
 | Input | Floor (0) | Ceiling (100) | Where the range came from |
 |---|---|---|---|
 | Fear and greed | 0 | 100 | already a 0–100 index |
-| Social volume (7d z) | −2σ | +2σ | TBC from first days of data |
-| Funding rate | −0.05% | +0.05% | TBC — typical perp funding band |
-| Open interest 7d change | −20% | +20% | TBC |
-| Liquidations 24h | $0 | $500M | TBC |
+| Trending rank churn | 0 | TBC | TBC from the first days of data |
+| Community post volume | TBC | TBC | TBC from the first days of data |
+| Turnover (volume ÷ market cap) | TBC | TBC | TBC — market-wide turnover sits in single-digit percent, but the range is set from measurement, not instinct |
+| Exchange concentration (HHI) | TBC | TBC | TBC |
+| Reserve movement, 24h | TBC | TBC | TBC |
 
 Every "TBC" here gets filled in from the first days of recorded data, and the value used is written
 on the public method page.

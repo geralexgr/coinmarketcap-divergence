@@ -4,55 +4,84 @@ Written 12 September 2026. This is the file to open first. It assumes you have r
 
 **Context in one line:** we are building a tool that measures the gap between what the crypto
 market says and what it has committed money to, for the CoinMarketCap API Hackathon, submissions
-closing early October 2026. Nothing is implemented yet.
+closing early October 2026.
 
-**The one thing that matters today:** the poller must be recording before you build anything else.
-CoinMarketCap does not serve historical sentiment or positioning data. Every hour the poller is not
-running is an hour of history that cannot be recovered later, and the trail on the main chart — the
-demo moment — is made entirely of recorded history.
+**Where it stands.** The recording layer is built and tested end-to-end against a real MySQL: the
+schema, the poller, an endpoint verifier, a host preflight check and a health check. Two open
+questions are answered by measurement. **Nothing is recording yet**, because that needs the API key
+and the host, and neither has been touched.
 
-So the order below is not a preference. Do not reorder it.
+**The one thing that matters today:** the poller must be recording. CoinMarketCap does not serve
+historical sentiment or positioning data. Every hour the poller is not running is an hour of history
+that cannot be recovered later, and the trail on the main chart — the demo moment — is made entirely
+of recorded history.
 
 ---
 
+## What is done
+
+- [x] `sql/001_init.sql` — `raw_samples` (verbatim payloads) and `fetch_log` (every attempt)
+- [x] `lib/` — config loading from outside the webroot, the CMC client, the DB writers, the
+      endpoint catalogue
+- [x] `poller/run.php` — `--market`, `--assets`, `--once`, `--dry-run`, per-scope locking,
+      real fetch timestamps, failures stored not just logged
+- [x] `bin/probe-paths.php` — which paths exist. No key needed
+- [x] `bin/verify-endpoints.php` — which ones the plan permits. Needs the key
+- [x] `bin/preflight.php` — can this host run the poller at all
+- [x] `bin/health.php` — is it recording, what is the cadence, what did it cost
+- [x] **Open question 2 answered:** there are no derivatives endpoints. Money axis rebuilt around
+      turnover — decision D10
+- [x] **Open question 3 answered:** fear and greed is a real endpoint, not only a site chart
+
+## What is blocked on you
+
+Both blockers are credentials, not code.
+
+1. **A CoinMarketCap API key.** Put it in `../config.php` (copy `config.example.php`). Nothing
+   downstream can be verified without it.
+2. **The cPanel host** — SSH access, a MySQL database and user, and the PHP CLI path.
+
 ## Day 1 — get something recording
 
-Target: by end of day, a cron job on the real host is writing rows into MySQL every five minutes.
-Ugly is fine. Wrong-shaped is fine. Not running is not fine.
+### 1. Verify the API with the real key ~20 min
 
-### 1. Verify the API before designing against it ~45 min
+```bash
+php bin/verify-endpoints.php --save-fixtures
+```
 
-Make real calls with the real key from the real server. Not from a laptop, not by reading the docs.
+- [ ] Run it **on the host**, so it doubles as proof the host can reach the API (open question 5)
+- [ ] Paste the generated tables into `docs/endpoint-access.md`, replacing the ❓ column
+- [ ] **Read two payloads before anything else.** Both could partly reverse D10:
+      does `global_metrics` carry `derivatives_volume_24h`, and does
+      `market-pairs/latest?category=derivatives` carry open interest?
+- [ ] `--save-fixtures` writes the real payloads to `tests/fixtures/live/`, which is what the
+      extraction layer gets built against without spending credits
 
-- [ ] Confirm outbound HTTPS from PHP CLI to `pro-api.coinmarketcap.com` works on the host
-- [ ] Hit each endpoint in the table in `docs/endpoint-access.md`, record status, shape, credits
-- [ ] **Derivatives first** — funding, open interest, liquidations. This is the highest-priority
-      check because the Money axis depends on it and the fallback is materially weaker
-- [ ] Confirm whether fear and greed exists as an endpoint at all, or only as a chart on the site
-- [ ] Write every result into `docs/endpoint-access.md`. Leave nothing as "probably"
+### 2. Confirm the host can do this ~15 min
 
-**Decision gate:** if derivatives are unavailable on our tier, stop and record the fallback choice
-in `docs/decisions.md` before writing any fetcher. See open question 2 in `docs/open-questions.md`.
+```bash
+php bin/preflight.php
+```
 
-### 2. Confirm the host can actually do this ~20 min
+Checks the PHP version and extensions, outbound HTTPS from CLI, the MySQL connection and INSERT
+grant, whether the config sits outside the webroot, and the plan's real credit and rate limits. It
+prints a markdown table for the "Host checks" section of `docs/endpoint-access.md`.
 
-- [ ] cPanel cron minimum interval — some shared hosts enforce a 5 or 15 minute floor
-- [ ] PHP CLI binary path (`/usr/local/bin/php` or otherwise) and its version
-- [ ] MySQL database created, user created, credentials in a config file **outside the webroot**
-- [ ] A writable log directory outside the webroot
+- [ ] Every blocking check passes
+- [ ] cPanel cron minimum interval confirmed — open question 4, and the one thing preflight cannot
+      check for you
 
-### 3. The crudest possible poller ~2 hr
+### 3. Start recording ~20 min
 
-Deliberately not the good version. One file. No abstraction.
+```bash
+mysql -u USER -p DB < sql/001_init.sql
+php poller/run.php --once
+```
 
-- [ ] One table: `raw_samples(id, endpoint, fetched_at, http_status, credits, payload JSON)`
-- [ ] One script that loops over the confirmed endpoints, stores the raw response verbatim,
-      and records the **actual** fetch time, not the scheduled one
-- [ ] Failures are stored too — status and error text, same table or `fetch_log`
-- [ ] `--once` flag that fetches, prints what it wrote, and exits
-- [ ] Deploy it. Add the cron entry. Watch two consecutive runs land
+- [ ] Then the two cron entries from `docs/deploy.md`
+- [ ] Watch two consecutive runs land
 
-**Day 1 is done when** `SELECT count(*), max(fetched_at) FROM raw_samples` shows numbers going up
+**Day 1 is done when** `php bin/health.php` says "Recording cleanly" and the sample count climbs
 without anyone touching anything.
 
 ---
@@ -61,15 +90,12 @@ without anyone touching anything.
 
 The poller keeps running untouched while you do this. Never take it offline to refactor.
 
-- [ ] Split the crude script: `lib/http.php`, `lib/db.php`, `poller/run.php`, one fetcher per source
-- [ ] Real schema — `docs/data-model.md` has the draft. Raw payloads stay the source of truth
+- [ ] `sql/002_derived.sql` — `market_metric`, `asset_metric`, `scores`, `asset_universe`
 - [ ] Extraction pass that reads stored raw payloads and populates the typed tables, so it can be
-      re-run over all history when the parsing is wrong
-- [ ] Per-asset polling at 15 min, universe capped at top ~100, batched against the 30/min limit
-- [ ] Credit accounting from the response headers into `fetch_log`
-- [ ] `bin/` script that prints recording health: rows/hour, gaps, failure rate
-
----
+      re-run over all history when the parsing turns out to be wrong
+- [ ] Confirm batching from a real `quotes_latest` payload — the poller assumes 100 ids per call
+      and that assumption is currently untested (open question 6)
+- [ ] Widen `bin/health.php` to report extraction lag as well as fetch health
 
 ## Day 3–4 — scoring
 

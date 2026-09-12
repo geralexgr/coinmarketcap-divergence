@@ -17,7 +17,9 @@
 > | What the UI shows | [docs/ui-spec.md](docs/ui-spec.md) |
 > | How to deploy | [docs/deploy.md](docs/deploy.md) |
 >
-> **Status: skeleton.** No code exists yet. Nothing is recording.
+> **Status: recording layer built, not deployed.** Schema, poller, endpoint verifier, host
+> preflight and health check all exist and are tested end-to-end against a real MySQL. **Nothing is
+> recording yet** — that needs the API key and the cPanel host.
 
 A tool that measures the gap between what the crypto market is **saying** and what it has
 **committed money to**. Built for the CoinMarketCap API Hackathon (submissions close early
@@ -56,8 +58,13 @@ Two scores, both normalised 0–100, both sampled continuously.
 **Voice** — what the crowd is saying.
 Sources: social/community volume, fear and greed, trending topics.
 
-**Money** — what the crowd has actually committed.
-Sources: funding rates, open interest, liquidations.
+**Money** — how much money is actually moving.
+Sources: turnover (volume ÷ market cap), exchange volume concentration, exchange reserve movement.
+
+Originally designed around funding rates, open interest and liquidations. **Those do not exist on
+the CoinMarketCap API** — 38 paths probed, all absent, verified 12 Sep 2026. See decision D10. The
+substitute measures money *moving*, not money *committed and leveraged*, and the method page says so
+in those words.
 
 **Divergence** — the signed gap between them.
 
@@ -80,7 +87,7 @@ much money sits behind it.
 ## Why the recorder is the whole product
 
 CoinMarketCap's API is almost entirely **snapshot data**. There is no historical endpoint for
-social volume, funding, or open interest at usable granularity, and none at all for some of it.
+social volume, turnover, or exchange flow at usable granularity, and none at all for some of it.
 
 Price history can be fetched retroactively. **Positioning and sentiment history cannot.**
 
@@ -176,19 +183,27 @@ tool from a black box, and it feeds the code quality and documentation criterion
 
 ## Unresolved — verify before building against them
 
-These block real design decisions. Check them by making actual calls with the real key, not by
-reading the docs.
+Check them by making actual calls, not by reading the docs — which is how 2 and 3 got settled on
+day one. Note that CMC resolves paths *before* validating the key, so an invalid key already
+separates real endpoints (401) from imaginary ones (404): `bin/probe-paths.php` maps the API surface
+with no key and no credits. Watch for the trap — an unknown path answers **HTTP 200** with
+`error_code: 500` "The system is busy", so never judge a response by its HTTP status alone. Use
+`cmc_outcome()`.
 
 1. **Which endpoints respond on Startup tier.** The plan gives 23 latest-data endpoints against
-   Standard's 35. Some of what this design assumes may 403. Verify endpoint by endpoint and write
-   the results into `docs/endpoint-access.md`.
+   Standard's 35. 26 paths are confirmed to *exist*; which ones the plan permits is untested and
+   needs the key. Run `php bin/verify-endpoints.php` from the host.
 
-2. **Derivatives access.** Funding rates, open interest, and liquidations are the best inputs to
-   the Money axis. If they are not on the tier, the fallback is volume concentration and exchange
-   reserve movement — weaker, but survivable. **This is the highest-priority check.**
+2. ~~**Derivatives access.**~~ **Answered 12 Sep 2026: there is none.** 38 candidate paths across
+   `/v1/`–`/v4/`, every one absent. Money axis rebuilt around turnover — D10. Two payload
+   inspections could partly reverse this and are the first thing to do with a real key: does
+   `global_metrics` carry `derivatives_volume_24h`, and does
+   `market-pairs/latest?category=derivatives` carry open interest?
 
-3. **Fear and greed via API.** It is a chart page on the site; confirm whether it is an endpoint at
-   all. If not, social/community volume alone can carry the Voice axis.
+3. ~~**Fear and greed via API.**~~ **Answered 12 Sep 2026: it is a real endpoint.**
+   `/v3/fear-and-greed/latest` and `/historical` both resolve. Plan access still unconfirmed. The
+   historical one is the only input in the whole product that could be backfilled to before
+   recording started.
 
 4. **cPanel cron minimum interval.** Most shared hosts allow every minute; some enforce a 5 or 15
    minute floor.

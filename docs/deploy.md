@@ -5,6 +5,10 @@ Target: cPanel shared hosting, PHP + MySQL, real cron via PHP CLI.
 Written before first deployment, so every step is an expectation until it has been done once —
 correct this file the first time it is followed, and note anything the host does differently.
 
+`bin/preflight.php` checks most of what this runbook assumes, and prints a markdown table of results
+for `docs/endpoint-access.md`. Run it after step 3 and again after step 2 is fixed, rather than
+discovering a missing extension at step 5.
+
 ## 1. Layout on the host
 
 The webroot serves `public/` only. Everything else sits above it, unreachable over HTTP.
@@ -40,19 +44,33 @@ cp divergence/config.example.php /home/USER/config.php
 chmod 600 /home/USER/config.php
 ```
 
-Verify it is not web-reachable: requesting it over HTTP must 404.
+The config loader searches `$DIVERGENCE_CONFIG`, then `../config.php` relative to the repo root,
+then `./config.php`. The layout above hits the second, which is why the repo sits one level below
+the config.
+
+Verify it is not web-reachable: requesting it over HTTP must 404. `bin/preflight.php` also asserts
+the resolved config path is not under `public/`.
 
 ## 4. Verify PHP CLI can reach the API
 
 Before the cron entry exists. From an SSH session on the host, not a laptop:
 
 ```bash
-/usr/local/bin/php -v
+/usr/local/bin/php /home/USER/divergence/bin/preflight.php
+/usr/local/bin/php /home/USER/divergence/bin/verify-endpoints.php --save-fixtures
 /usr/local/bin/php /home/USER/divergence/poller/run.php --once
 ```
 
-The `--once` run prints what it fetched and what it wrote. If outbound HTTPS is blocked for CLI,
-this is where it surfaces — see `open-questions.md` item 5.
+`preflight.php` checks the PHP version and extensions, DNS, a raw TLS connect, an authenticated
+call, the MySQL connection and INSERT grant, and the log directory. If outbound HTTPS is blocked for
+CLI, this is where it surfaces — see `open-questions.md` item 5.
+
+`verify-endpoints.php` then settles which endpoints the plan permits, costs about 20 credits, and
+with `--save-fixtures` leaves real payloads in `tests/fixtures/live/` for the extraction layer to be
+built against without spending more.
+
+The `--once` run prints what it fetched and what it wrote. `--dry-run` alongside it fetches and
+reports without writing.
 
 ## 5. Cron
 
@@ -65,6 +83,9 @@ cPanel → Cron Jobs. Two entries.
 
 Notes:
 - Absolute paths for both the binary and the script. Cron's `PATH` is not a login shell's.
+- The poller takes a per-scope lock in the system temp directory, so if a run overruns its tick the
+  next one skips with exit code 3 rather than piling up behind it.
+- Exit codes: 0 all recorded · 1 some failed · 2 nothing recorded · 3 could not start.
 - `>> ... 2>&1` so failures land in the log rather than in an email nobody reads.
 - Not a `wget` to a URL: that inherits HTTP timeouts and creates a public endpoint needing
   protection.
@@ -83,7 +104,9 @@ Two consecutive runs landing, with no unexpected statuses, is the day-1 mileston
 
 ## 7. Ongoing checks
 
-- `bin/health.php` — rows/hour, longest gap, failure rate
+- `bin/health.php` — per-endpoint success rate, cadence, longest gap, credits against the 300,000
+  budget. Exits non-zero when nothing has landed recently, so it also works as a watchdog:
+  `*/30 * * * * /usr/local/bin/php /home/USER/divergence/bin/health.php --stale=1800 || mail ...`
 - Credit consumption against the 300,000/month budget, from `fetch_log`
 - Log size; rotate if the host does not
 

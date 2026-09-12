@@ -1,13 +1,21 @@
 # sql/
 
-Forward-only migrations, numbered. Empty until day 1.
+Forward-only migrations, numbered. Safe to re-run: every statement is `IF NOT EXISTS`.
 
-| File | Contents |
-|---|---|
-| `001_init.sql` | `raw_samples`, `fetch_log` — the minimum needed to start recording |
-| `002_metrics.sql` | `market_metric`, `asset_metric`, `asset_universe` |
-| `003_scores.sql` | `scores` |
+| File | Contents | Status |
+|---|---|---|
+| `001_init.sql` | `raw_samples`, `fetch_log` — the minimum needed to start recording | **built** |
+| `002_derived.sql` | `market_metric`, `asset_metric`, `asset_universe`, `scores` | planned |
 
-Draft shapes and the reasoning for each column: [`../docs/data-model.md`](../docs/data-model.md).
+```bash
+mysql -u USER -p DB < sql/001_init.sql
+```
 
-Day 1 only needs `001`. Do not design the full schema before something is recording.
+`001` is everything that cannot be rebuilt later. The derived tables are disposable by design: if a
+formula changes, truncate and recompute from `raw_samples`.
+
+Column comments in `001_init.sql` are authoritative where `../docs/data-model.md` disagrees with
+them — notably `payload`, which is `LONGTEXT` rather than a JSON column, because MySQL reparses JSON
+columns on write and the stored payload has to stay byte-for-byte what CoinMarketCap sent.
+
+Do not design the full schema before something is recording.
