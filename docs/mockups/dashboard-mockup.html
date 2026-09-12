@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Divergence — mockup and flow</title>
+<style>
+:root{
+  --field:#EEF1F0;
+  --surface:#FFFFFF;
+  --ink:#1B2227;
+  --graphite:#6B7780;
+  --hairline:#D3D9D7;
+  --hair-soft:#E5E9E8;
+  --voice:#3A6EA5;
+  --money:#A34428;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--field);
+  color:var(--ink);
+  font-family:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+.page{max-width:1080px;margin:0 auto;padding:48px 28px 80px}
+
+.masthead{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:8px}
+.masthead h1{font-size:30px;font-weight:600;letter-spacing:-.025em;margin:0}
+.masthead p{margin:6px 0 0;color:var(--graphite);font-size:14px;max-width:62ch}
+.sectionmark{font-size:12px;color:var(--graphite);margin:44px 0 12px;padding-top:10px;border-top:1px solid var(--hairline)}
+
+/* ---------- browser frame ---------- */
+.frame{border:1px solid var(--hairline);background:var(--surface);border-radius:3px;overflow:hidden}
+.frametop{display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--hair-soft);background:#F7F9F8}
+.knobs{display:flex;gap:6px}
+.knobs i{width:9px;height:9px;border-radius:50%;background:var(--hairline);display:block}
+.addr{font-size:12px;color:var(--graphite)}
+.app{padding:20px}
+
+.appbar{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:14px;border-bottom:1px solid var(--hair-soft)}
+.wordmark{font-size:16px;font-weight:650;letter-spacing:-.02em}
+.status{font-size:12px;color:var(--graphite);margin-left:12px;font-weight:400;letter-spacing:0}
+.nav{display:flex;gap:20px;font-size:13px;color:var(--graphite)}
+.nav b{font-weight:600;color:var(--ink);border-bottom:2px solid var(--money);padding-bottom:3px}
+
+.stage{display:grid;grid-template-columns:1fr 250px;gap:28px;padding:22px 0 0}
+
+.plothead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.plothead h2{font-size:15px;font-weight:600;margin:0}
+.plothead span{font-size:12px;color:var(--graphite)}
+.plotsub{font-size:12.5px;color:var(--graphite);margin:0 0 10px;max-width:56ch}
+svg.plot{width:100%;height:auto;display:block}
+
+.qfill{fill:var(--money);opacity:.055}
+.qline{stroke:var(--hairline);stroke-width:1}
+.qdash{stroke:var(--hairline);stroke-width:1;stroke-dasharray:2 4}
+.qname{font-size:8.4px;fill:var(--graphite);letter-spacing:.01em}
+.qname.live{fill:var(--money);font-weight:650}
+.trail{fill:none;stroke:var(--graphite);stroke-width:1.2;opacity:.55}
+.tdot{fill:var(--graphite);opacity:.55}
+.pin{fill:var(--money)}
+.pinring{fill:none;stroke:var(--money);stroke-width:1;opacity:.4}
+.pinlab{font-size:9.5px;font-weight:650;fill:var(--ink)}
+.pintime{font-size:8.4px;fill:var(--graphite)}
+.axname{font-size:9px;fill:var(--ink);font-weight:600}
+.axhint{font-size:8.4px;fill:var(--graphite)}
+.axname.v{fill:var(--voice)}
+.axname.m{fill:var(--money)}
+
+.readout{display:flex;flex-direction:column;gap:18px;border-left:1px solid var(--hair-soft);padding-left:22px}
+.bignum{font-size:52px;font-weight:300;letter-spacing:-.04em;line-height:.9;color:var(--money)}
+.bignum small{font-size:16px;color:var(--graphite);font-weight:400;letter-spacing:0}
+.bigcap{font-size:13px;font-weight:600;margin-bottom:6px}
+.bignote{font-size:12.5px;color:var(--graphite);margin-top:9px;line-height:1.45}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--hair-soft);border-bottom:1px solid var(--hair-soft)}
+.pair div{padding:12px 0}
+.pair div+div{padding-left:16px;border-left:1px solid var(--hair-soft)}
+.pk{font-size:12px;font-weight:600}
+.pk.v{color:var(--voice)}
+.pk.m{color:var(--money)}
+.pv{font-size:26px;font-weight:400;letter-spacing:-.02em;line-height:1.1;margin-top:2px}
+.pd{font-size:11.5px;color:var(--graphite)}
+.inputs h3{font-size:12.5px;font-weight:600;margin:0 0 2px}
+.inputs p{font-size:11.5px;color:var(--graphite);margin:0 0 8px}
+.row{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--hair-soft)}
+.row span{color:var(--graphite)}
+.row i{font-style:normal;font-weight:600}
+.row i.v{color:var(--voice)}
+.row i.m{color:var(--money)}
+
+.tablewrap{margin-top:26px;border-top:1px solid var(--hairline);padding-top:16px}
+.tablewrap h2{font-size:15px;font-weight:600;margin:0}
+.tablewrap .plotsub{margin-top:4px}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th{font-size:11.5px;color:var(--graphite);font-weight:500;text-align:right;padding:6px 10px;border-bottom:1px solid var(--hairline)}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+td{font-size:13.5px;padding:10px;text-align:right;border-bottom:1px solid var(--hair-soft)}
+td:last-child,th:last-child{text-align:left;padding-right:0}
+.tick{font-weight:650}
+.gap{font-weight:650}
+.gap.m{color:var(--money)}
+.gap.v{color:var(--voice)}
+.spark{width:84px;height:16px;display:inline-block;vertical-align:middle}
+.spark path{fill:none;stroke-width:1.3}
+.quad-tag{font-size:12px;color:var(--graphite)}
+.quad-tag.hot{color:var(--money);font-weight:600}
+.tfoot{font-size:12px;color:var(--graphite);margin-top:12px;max-width:70ch}
+
+/* ---------- flow ---------- */
+.flow{background:var(--surface);border:1px solid var(--hairline);border-radius:3px;padding:26px}
+svg.pipe{width:100%;height:auto;display:block}
+.box{fill:none;stroke:var(--ink);stroke-width:1.2}
+.box.soft{stroke:var(--hairline)}
+.boxfill{fill:#F7F9F8}
+.moat{fill:var(--money);opacity:.06}
+.bt{font-size:11px;font-weight:650;fill:var(--ink)}
+.bs{font-size:9.2px;fill:var(--graphite)}
+.bs.v{fill:var(--voice)}
+.bs.m{fill:var(--money)}
+.arrow{stroke:var(--ink);stroke-width:1.1;fill:none}
+.arrowhead{fill:var(--ink)}
+.note{font-size:9.4px;fill:var(--money);font-weight:600}
+.stepnum{font-size:9px;fill:var(--graphite)}
+
+.legend{margin-top:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.legend h4{font-size:13px;margin:0 0 4px;font-weight:600}
+.legend p{font-size:12.5px;color:var(--graphite);margin:0;line-height:1.5}
+
+@media (max-width:820px){
+  .stage{grid-template-columns:1fr}
+  .readout{border-left:none;padding-left:0;border-top:1px solid var(--hair-soft);padding-top:18px}
+  .legend{grid-template-columns:1fr}
+  .page{padding:28px 16px 60px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <h1>Divergence</h1>
+    <p>What the crypto market is saying, plotted against what it has actually committed. Two measurements CoinMarketCap publishes separately and never puts on the same axis.</p>
+  </div>
+
+  <p class="sectionmark">The screen</p>
+
+  <div class="frame">
+    <div class="frametop">
+      <div class="knobs"><i></i><i></i><i></i></div>
+      <div class="addr">divergence.app</div>
+    </div>
+
+    <div class="app">
+      <div class="appbar">
+        <div class="wordmark">Divergence<span class="status">recording since 9 Sep, 4,312 samples</span></div>
+        <div class="nav"><b>Market</b><span>Assets</span><span>Lead and lag</span><span>Method</span></div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <div class="plothead">
+            <h2>Where the market sits</h2>
+            <span>last 7 days</span>
+          </div>
+          <p class="plotsub">Each point is one hourly sample. The line is the path the market has taken this week.</p>
+
+          <svg class="plot" viewBox="0 0 440 330" role="img" aria-label="Quadrant plot of voice against money">
+            <rect x="58" y="18" width="172" height="134" class="qfill"/>
+            <rect x="58" y="18" width="344" height="268" class="qline" fill="none"/>
+            <line x1="230" y1="18" x2="230" y2="286" class="qdash"/>
+            <line x1="58" y1="152" x2="402" y2="152" class="qdash"/>
+
+            <text x="68" y="34" class="qname live">Quiet, but leveraged</text>
+            <text x="240" y="34" class="qname">Loud and leveraged</text>
+            <text x="68" y="278" class="qname">Apathy</text>
+            <text x="240" y="278" class="qname">Chatter without conviction</text>
+
+            <path d="M 124 240 L 150 219 L 178 211 L 206 186 L 246 152 L 278 120 L 304 98" class="trail"/>
+            <circle cx="124" cy="240" r="2.4" class="tdot"/>
+            <circle cx="150" cy="219" r="2.4" class="tdot"/>
+            <circle cx="178" cy="211" r="2.4" class="tdot"/>
+            <circle cx="206" cy="186" r="2.4" class="tdot"/>
+            <circle cx="246" cy="152" r="2.4" class="tdot"/>
+            <circle cx="278" cy="120" r="2.4" class="tdot"/>
+            <circle cx="304" cy="98" r="14" class="pinring"/>
+            <circle cx="304" cy="98" r="5.5" class="pin"/>
+            <text x="324" y="95" class="pinlab">Now</text>
+            <text x="324" y="107" class="pintime">11 Sep, 19:04 UTC</text>
+            <text x="108" y="250" class="pintime">7d ago</text>
+
+            <text x="230" y="305" class="axname m" text-anchor="middle">Money committed</text>
+            <text x="230" y="317" class="axhint" text-anchor="middle">funding rates, open interest, liquidations</text>
+            <text x="-152" y="26" transform="rotate(-90)" class="axname v" text-anchor="middle">Voice</text>
+            <text x="-152" y="38" transform="rotate(-90)" class="axhint" text-anchor="middle">social volume, fear and greed</text>
+          </svg>
+        </div>
+
+        <div class="readout">
+          <div>
+            <div class="bigcap">Divergence</div>
+            <div class="bignum">38<small> of 100</small></div>
+            <p class="bignote">Money committed is running ahead of narrative. The wider this gets, the further positioning has moved without a story attached.</p>
+          </div>
+
+          <div class="pair">
+            <div>
+              <div class="pk v">Voice</div>
+              <div class="pv">41</div>
+              <div class="pd">down 12 this week</div>
+            </div>
+            <div>
+              <div class="pk m">Money</div>
+              <div class="pv">79</div>
+              <div class="pd">up 26 this week</div>
+            </div>
+          </div>
+
+          <div class="inputs">
+            <h3>What went into it</h3>
+            <p>Live values, normalised to a 0&ndash;100 scale.</p>
+            <div class="row"><span>Fear and greed</span><i class="v">31</i></div>
+            <div class="row"><span>Social volume, 7d</span><i class="v">&minus;18%</i></div>
+            <div class="row"><span>Funding rate, weighted</span><i class="m">+0.041%</i></div>
+            <div class="row"><span>Open interest, 7d</span><i class="m">+$4.1B</i></div>
+            <div class="row"><span>Liquidations, 24h</span><i class="m">$212M</i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tablewrap">
+        <h2>The same two measurements, per asset</h2>
+        <p class="plotsub">Sorted by the gap between how much an asset is talked about and how much money has been committed to it.</p>
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Voice</th><th>Money</th><th>Gap</th><th>7 day path</th><th>Reading</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="tick">HYPE</td><td>22</td><td>84</td><td class="gap m">+62</td>
+              <td><svg class="spark" viewBox="0 0 84 16"><path d="M2 13 L15 12 L28 10 L41 10 L54 6 L67 4 L82 2" stroke="#A34428"/></svg></td>
+              <td class="quad-tag hot">Quiet, but leveraged</td>
+            </tr>
+            <tr>
+              <td class="tick">SUI</td><td>31</td><td>77</td><td class="gap m">+46</td>
+              <td><svg class="spark" viewBox="0 0 84 16"><path d="M2 12 L15 11 L28 12 L41 8 L54 7 L67 5 L82 4" stroke="#A34428"/></svg></td>
+              <td class="quad-tag hot">Quiet, but leveraged</td>
+            </tr>
+            <tr>
+              <td class="tick">ETH</td><td>48</td><td>71</td><td class="gap m">+23</td>
+              <td><svg class="spark" viewBox="0 0 84 16"><path d="M2 11 L15 12 L28 9 L41 9 L54 8 L67 7 L82 6" stroke="#A34428"/></svg></td>
+              <td class="quad-tag">Quiet, but leveraged</td>
+            </tr>
+            <tr>
+              <td class="tick">PEPE</td><td>88</td><td>34</td><td class="gap v">&minus;54</td>
+              <td><svg class="spark" viewBox="0 0 84 16"><path d="M2 4 L15 5 L28 3 L41 8 L54 9 L67 11 L82 13" stroke="#3A6EA5"/></svg></td>
+              <td class="quad-tag">Chatter without conviction</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="tfoot">Every number here is a measurement of a condition that exists right now. Each one links to the endpoint it came from and the minute it was sampled. Nothing on this screen predicts anything.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="sectionmark">How it works</p>
+
+  <div class="flow">
+    <svg class="pipe" viewBox="0 0 1000 300" role="img" aria-label="Data flow from CoinMarketCap through the recorder to the surfaces">
+      <defs>
+        <marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" class="arrowhead"/>
+        </marker>
+      </defs>
+
+      <!-- 1 CMC -->
+      <text x="20" y="28" class="stepnum">1</text>
+      <rect x="20" y="38" width="182" height="104" rx="2" class="box soft boxfill"/>
+      <rect x="20" y="38" width="182" height="104" rx="2" class="box soft"/>
+      <text x="34" y="60" class="bt">CoinMarketCap API</text>
+      <text x="34" y="78" class="bs v">Community and content</text>
+      <text x="34" y="92" class="bs v">Fear and greed</text>
+      <text x="34" y="110" class="bs m">Derivatives, funding, OI</text>
+      <text x="34" y="124" class="bs m">Liquidations</text>
+
+      <line x1="202" y1="90" x2="252" y2="90" class="arrow" marker-end="url(#ah)"/>
+
+      <!-- 2 poller -->
+      <text x="258" y="28" class="stepnum">2</text>
+      <rect x="258" y="38" width="150" height="104" rx="2" class="box"/>
+      <text x="272" y="60" class="bt">Poller</text>
+      <text x="272" y="78" class="bs">Runs every 5 minutes</text>
+      <text x="272" y="92" class="bs">Normalises each input</text>
+      <text x="272" y="106" class="bs">to a 0&ndash;100 scale</text>
+      <text x="272" y="124" class="bs">Retries, backs off, logs</text>
+
+      <line x1="408" y1="90" x2="458" y2="90" class="arrow" marker-end="url(#ah)"/>
+
+      <!-- 3 store -->
+      <text x="464" y="28" class="stepnum">3</text>
+      <rect x="464" y="30" width="164" height="120" rx="2" class="moat"/>
+      <rect x="464" y="38" width="164" height="104" rx="2" class="box"/>
+      <text x="478" y="60" class="bt">Time series store</text>
+      <text x="478" y="78" class="bs">Every sample kept</text>
+      <text x="478" y="92" class="bs">Voice and money, market</text>
+      <text x="478" y="106" class="bs">wide and per asset</text>
+      <text x="478" y="124" class="bs">MySQL on cPanel</text>
+      <text x="464" y="172" class="note">This is the part nobody can copy. CoinMarketCap</text>
+      <text x="464" y="185" class="note">publishes the present, not the past. Start the</text>
+      <text x="464" y="198" class="note">poller on day one or there is nothing to show.</text>
+
+      <line x1="628" y1="90" x2="678" y2="90" class="arrow" marker-end="url(#ah)"/>
+
+      <!-- 4 compute -->
+      <text x="684" y="28" class="stepnum">4</text>
+      <rect x="684" y="38" width="140" height="104" rx="2" class="box"/>
+      <text x="698" y="60" class="bt">Scoring</text>
+      <text x="698" y="78" class="bs">Voice score</text>
+      <text x="698" y="92" class="bs">Money score</text>
+      <text x="698" y="106" class="bs">Divergence index</text>
+      <text x="698" y="124" class="bs">Lead and lag over time</text>
+
+      <line x1="824" y1="90" x2="864" y2="62" class="arrow" marker-end="url(#ah)"/>
+      <line x1="824" y1="90" x2="864" y2="90" class="arrow" marker-end="url(#ah)"/>
+      <line x1="824" y1="90" x2="864" y2="118" class="arrow" marker-end="url(#ah)"/>
+
+      <!-- 5 surfaces -->
+      <text x="870" y="28" class="stepnum">5</text>
+      <rect x="870" y="46" width="112" height="32" rx="2" class="box soft"/>
+      <text x="882" y="66" class="bt">Web app</text>
+      <rect x="870" y="88" width="112" height="32" rx="2" class="box soft"/>
+      <text x="882" y="108" class="bt">MCP server</text>
+      <rect x="870" y="130" width="112" height="32" rx="2" class="box soft"/>
+      <text x="882" y="150" class="bt">Alerts</text>
+      <text x="870" y="185" class="bs">The MCP layer reuses the</text>
+      <text x="870" y="198" class="bs">same scores, so an agent</text>
+      <text x="870" y="211" class="bs">can ask for them directly.</text>
+    </svg>
+
+    <div class="legend">
+      <div>
+        <h4>Why it is a web app and not only an agent</h4>
+        <p>A judge can open a URL and check the numbers against CoinMarketCap themselves. That is what makes the largest scoring criterion, whether the thing actually works, easy to award.</p>
+      </div>
+      <div>
+        <h4>Why the MCP layer comes last</h4>
+        <p>Once the scores sit in a database, exposing them as agent tools is a thin wrapper over queries you have already written. Same codebase, second track.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
