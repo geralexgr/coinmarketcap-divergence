@@ -4,40 +4,25 @@ These block real design decisions. Check them by making actual calls with the re
 real host, not by reading documentation. Answers go into `endpoint-access.md`; decisions that follow
 from them go into `decisions.md`.
 
-Status: all open as of 12 September 2026.
+Status as of 12 September 2026: questions 2 and 3 answered, the rest open.
 
 ---
 
-## 1. Which endpoints respond on Startup tier — ❓ open
+## 1. Which endpoints respond on Startup tier — ❓ open · now the highest priority
 
-The plan gives 23 latest-data endpoints against Standard's 35. Some of what this design assumes may
-403.
+The plan gives 23 latest-data endpoints against Standard's 35. 26 paths are confirmed to **exist**
+(`endpoint-access.md`); which of them our plan may actually **call** is untested, because it needs
+the real key.
 
-**How to settle it:** endpoint by endpoint, from the host. Write results into `endpoint-access.md`.
+**How to settle it:** `php bin/verify-endpoints.php` from the host. It calls each surviving path
+once, classifies the outcome, and writes the tables to paste back into `endpoint-access.md`. About
+20 credits.
 
-**What it changes:** potentially the entire input list for both axes.
+**What it changes:** the input list for both axes. Two payloads to read first, before anything
+else, because both could partly undo D10:
 
----
-
-## 2. Derivatives access — ❓ open · highest priority
-
-Funding rates, open interest and liquidations are the best inputs to the Money axis, and the Money
-axis is the half of the product that CoinMarketCap's own site cannot show alongside sentiment.
-
-**How to settle it:** call the derivatives endpoints first, before anything else gets written.
-
-**If unavailable:** fall back to volume concentration and exchange reserve movement. Weaker, but
-survivable, and the method page states the substitution plainly. Record the decision before writing
-a fetcher against the fallback.
-
----
-
-## 3. Fear and greed via API — ❓ open
-
-It is a chart page on the CoinMarketCap site. Whether it is an endpoint at all is unconfirmed.
-
-**If not available:** social / community volume alone can carry the Voice axis. The axis label and
-the method page change accordingly; the product still works.
+1. `global_metrics` — does it carry `derivatives_volume_24h`?
+2. `market-pairs/latest?category=derivatives` — does it carry open interest?
 
 ---
 
@@ -48,6 +33,9 @@ Most shared hosts allow every minute; some enforce a 5 or 15 minute floor.
 **What it changes:** the market-wide cadence, and therefore the density of the trail on the main
 chart. A 15-minute floor is still fine. An hourly floor would need a rethink.
 
+**Note:** the poller takes a per-scope lock, so if the host fires ticks faster than a run finishes,
+the extra ticks skip rather than pile up.
+
 ---
 
 ## 5. Outbound HTTPS from PHP CLI — ❓ open
@@ -55,6 +43,9 @@ chart. A 15-minute floor is still fine. An hourly floor would need a rethink.
 Confirm from the server that PHP CLI can reach `pro-api.coinmarketcap.com`. Some shared hosts
 firewall outbound connections from CLI differently than from the web SAPI, and this would be a bad
 thing to discover after building the poller.
+
+**How to settle it:** `php bin/preflight.php` on the host. It checks DNS, a raw TLS connect, and a
+real authenticated call, alongside the PHP version, extensions, MySQL grants and log directory.
 
 ---
 
@@ -77,5 +68,30 @@ once there is data to look at.
 
 ## Answered
 
-Nothing yet. When an item is settled, move it here with the answer and the date, and add the
-resulting decision to `decisions.md`.
+### 2. Derivatives access — ✅ answered 12 September 2026: there is none
+
+38 candidate paths probed across `/v1/` to `/v4/` — funding rate, open interest, liquidations,
+futures, perpetuals, derivatives listings/quotes/exchanges. Every one absent. Not 403: the paths do
+not exist, so no plan upgrade produces them. Reproduce with `php bin/probe-paths.php`.
+
+The Money axis is rebuilt from turnover, exchange concentration and reserve movement. Recorded as
+**D10**, and the method page states the substitution and what it costs in those words.
+
+Two payload inspections could still partly reverse this and are the first thing to do with a real
+key: whether `global_metrics` carries `derivatives_volume_24h`, and whether
+`market-pairs/latest?category=derivatives` carries open interest.
+
+### 3. Fear and greed via API — ✅ answered 12 September 2026: it is an endpoint
+
+`/v3/fear-and-greed/latest` and `/v3/fear-and-greed/historical` both resolve — they answer 401 to an
+invalid key rather than 404, which is the signal that the path exists. It is not only a chart on the
+site.
+
+Whether our plan may call it is question 1, still open. The historical endpoint is the more
+interesting half: it is the one input that might have real history behind it, which would let the
+Voice axis be backfilled to before recording started. Nothing else can be.
+
+---
+
+When an item is settled, move it here with the answer and the date, and add the resulting decision
+to `decisions.md`.

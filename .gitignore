@@ -1,0 +1,27 @@
+# The real config lives outside the webroot and never enters git.
+config.php
+/config.php
+
+# Local dev overrides
+.env
+*.local.php
+
+# Logs and scratch output
+logs/
+*.log
+/tmp/
+/var/
+
+# Verification output written by bin/verify-endpoints.php
+docs/endpoint-access.generated.md
+tests/fixtures/live/
+
+# OS noise
+.DS_Store
+._*
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp

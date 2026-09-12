@@ -2,13 +2,14 @@
 
 **What the crypto market is *saying*, plotted against what it has actually *committed money to*.**
 
-CoinMarketCap publishes both halves of this — community/social activity on one set of pages,
-derivatives positioning on another — and never puts them on the same axis. That gap is the product.
+CoinMarketCap publishes both halves of this — community and social activity on one set of pages,
+volume and exchange flow on another — and never puts them on the same axis. That gap is the product.
 
 Built for the CoinMarketCap API Hackathon (submissions close early October 2026).
 
-> **Status: skeleton.** Nothing is implemented yet. This repo currently contains the design,
-> the open questions, and the plan. Start at [TOMORROW.md](TOMORROW.md).
+> **Status: recording layer built, not yet deployed.** The schema, the poller, the endpoint
+> verifier and the health check exist and are tested end-to-end against a real MySQL. Nothing is
+> recording yet, because that needs an API key and the host. Start at [TOMORROW.md](TOMORROW.md).
 
 ---
 
@@ -27,7 +28,7 @@ Two scores, both normalised 0–100, both sampled continuously.
 | Score | Question it answers | Inputs |
 |---|---|---|
 | **Voice** | How much is the market talking? | social / community volume, fear and greed, trending |
-| **Money** | How much has the market actually committed? | funding rates, open interest, liquidations |
+| **Money** | How much money is actually moving? | turnover (volume ÷ market cap), exchange concentration, reserve movement |
 | **Divergence** | How far apart are they? | the signed gap between the two |
 
 Plotted as a quadrant — Voice on one axis, Money on the other. The market sits at a point, and
@@ -66,7 +67,7 @@ Two reasons this is a hard constraint and not a disclaimer:
 
 CoinMarketCap's API is almost entirely **snapshot data**. Price history can be fetched
 retroactively. **Positioning and sentiment history cannot** — there is no historical endpoint for
-social volume, funding, or open interest at usable granularity, and none at all for some of it.
+social volume, turnover or exchange flow at usable granularity, and none at all for some of it.
 
 Which means:
 
@@ -147,7 +148,11 @@ divergence/
 ├── public/                the web app — the only web-served directory
 ├── mcp/                   MCP server exposing the same scores as agent tools
 ├── sql/                   migrations
-├── bin/                   one-off operational scripts
+├── bin/                   operational scripts
+│   ├── probe-paths.php      which paths exist — no key needed
+│   ├── verify-endpoints.php which ones our plan may call — needs the key
+│   ├── preflight.php        can this host run the poller at all
+│   └── health.php           is it still recording, and what did it cost
 ├── tests/                 scoring fixtures, mostly
 └── docs/
     ├── architecture.md    components, cadence, failure behaviour
@@ -167,42 +172,94 @@ divergence/
 
 ## How to run
 
-Not runnable yet. When it is, this section says exactly this much and no more:
+The recording layer runs today. Everything downstream of it does not exist yet.
 
 ```bash
-cp config.example.php ../config.php   # outside the webroot; fill in the API key
+# 1. Does the API surface look the way this repo says it does? No key needed, no credits.
+php bin/probe-paths.php
+
+# 2. Point the config at your key and database. Outside the webroot.
+cp config.example.php ../config.php && chmod 600 ../config.php
+
+# 3. Can this host actually do the job? Run it ON the host, over SSH.
+php bin/preflight.php
+
+# 4. Which endpoints does the plan let us call? ~20 credits.
+php bin/verify-endpoints.php --save-fixtures
+
+# 5. Create the tables.
 mysql -u USER -p DB < sql/001_init.sql
-php poller/run.php --once             # one sample, prints what it wrote
+
+# 6. One sample, verbose, nothing hidden.
+php poller/run.php --once
+
+# 7. Is it still recording?
+php bin/health.php
 ```
 
-Then a cPanel cron entry, every 5 minutes:
+`--dry-run` fetches and reports without writing, for when you want to see the shape of a response
+before committing to storing it.
+
+Then the cron entries, which are the point of all of the above:
 
 ```
-*/5 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php >> /home/USER/logs/poller.log 2>&1
+*/5  * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
+*/15 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
 ```
 
-Full setup, including the parts specific to this host: [`docs/deploy.md`](docs/deploy.md).
+The poller takes a per-scope lock, so a slow run makes the next tick skip rather than pile up
+behind it. Full setup, including the parts specific to this host:
+[`docs/deploy.md`](docs/deploy.md).
 
 ---
 
 ## CoinMarketCap endpoints used
 
-Every row here is **unverified** until someone makes a real call with the real key on our tier.
-Filling this table in is the first task of day one — see
+Two different questions, and the repo answers them with two different scripts.
+
+**Does the path exist?** — `php bin/probe-paths.php`, no key needed. Answered 12 September 2026.
+**May our plan call it?** — `php bin/verify-endpoints.php`, needs the key, run from the host. Open.
+
+| Axis | Endpoint | Used for | Exists | Plan access |
+|---|---|---|---|---|
+| Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | ✅ | ❓ |
+| Voice | `/v1/community/trending/{topic,token}` | trending rank and its churn | ✅ | ❓ |
+| Voice | `/v1/cryptocurrency/trending/most-visited` | page views — attention before a trade | ✅ | ❓ |
+| Voice | `/v1/content/latest` | community post volume | ✅ | ❓ |
+| Money | `/v2/cryptocurrency/quotes/latest` | turnover = volume ÷ market cap | ✅ | ❓ |
+| Money | `/v1/exchange/listings/latest` | concentration of volume across venues | ✅ | ❓ |
+| Money | `/v1/exchange/assets` | exchange reserve movement | ✅ | ❓ |
+| Both | `/v1/cryptocurrency/listings/latest` | the asset universe | ✅ | ❓ |
+| Ops | `/v1/key/info` | credit budget, at no credit cost | ✅ | ❓ |
+
+### There are no derivatives endpoints
+
+The Money axis was designed around funding rates, open interest and liquidations. **None of them
+exist on the CoinMarketCap API.** 38 candidate paths probed across `/v1/` to `/v4/` — derivatives
+listings, quotes, exchanges, funding rate, open interest, liquidations, futures, perpetuals — every
+one absent. Not 403. Absent, so no plan upgrade produces them.
+
+The Money axis is rebuilt from turnover, exchange concentration and reserve movement. That is a
+weaker axis: it measures money *moving*, not money *committed and leveraged*, and nothing in the
+available data carries leverage. The method page says exactly that. Decision **D10** in
+[`docs/decisions.md`](docs/decisions.md); evidence in
 [`docs/endpoint-access.md`](docs/endpoint-access.md).
 
-| Axis | Endpoint | Used for | Status |
-|---|---|---|---|
-| Voice | community / content endpoints | social volume per asset | ❓ unverified |
-| Voice | fear and greed | market-wide sentiment level | ❓ may not be an API at all |
-| Money | derivatives / funding rate | the core of the Money axis | ❓ **highest-priority check** |
-| Money | open interest | positioning size | ❓ unverified |
-| Money | liquidations | forced-exit pressure | ❓ unverified |
-| Both | listings / quotes latest | the asset universe and volume fallback | ❓ assumed available |
+### The trap that made this worth checking twice
 
-If derivatives are not on our tier, the fallback for Money is volume concentration plus exchange
-reserve movement — weaker, but survivable. That decision is recorded in
-[`docs/decisions.md`](docs/decisions.md).
+`pro-api.coinmarketcap.com` answers an **unknown path with HTTP 200**, carrying
+`status.error_code: 500` and "The system is busy, please try again later!". Controls:
+`/v3/totally-made-up/xyz` and `/v5/anything` both do it.
+
+Reading the HTTP status alone recorded six non-existent derivatives endpoints as working. Every
+response in this repo is classified by `cmc_outcome()` in [`lib/http.php`](lib/http.php), which
+reads the body's error code as well as the status, and `bin/probe-paths.php` runs two control paths
+on every invocation so a change in CMC's routing surfaces as a failed control rather than as
+silently wrong results.
+
+The same quirk is what makes the prober work at all: CMC resolves the path *before* it validates
+the key, so an invalid key returns 401 on a real path and 404 on a fake one. The API surface can be
+mapped with no key and no credits.
 
 ---
 

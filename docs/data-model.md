@@ -1,7 +1,8 @@
 # Data model
 
-Draft. Not yet migrated — `sql/` is empty until day 1. The shape below is a starting point, not a
-commitment; the constraint that *is* a commitment is that raw payloads are stored and every derived
+`raw_samples` and `fetch_log` are **built and migrated** — see `sql/001_init.sql`, and the column
+comments there are authoritative where this file disagrees. The derived tables below are still a
+draft; the constraint that *is* a commitment is that raw payloads are stored and every derived
 row can be rebuilt from them.
 
 ## Principles
@@ -19,12 +20,12 @@ row can be rebuilt from them.
 | Column | Type | Why |
 |---|---|---|
 | `id` | BIGINT PK | |
-| `endpoint` | VARCHAR(120) | logical name, e.g. `fear_and_greed`, `derivatives_funding` |
+| `endpoint` | VARCHAR(120) | logical name, e.g. `fear_and_greed`, `exchange_listings` |
 | `scope` | ENUM('market','asset') | which cron wrote it |
 | `fetched_at` | DATETIME(3) UTC | actual response time |
 | `http_status` | SMALLINT | 200s and non-200s both stored |
 | `credits` | INT | from the response, not estimated |
-| `payload` | JSON / LONGTEXT | verbatim body |
+| `payload` | LONGTEXT | verbatim body. **Not** a JSON column: MySQL reparses those on write, so key order and whitespace are lost and the payload stops being byte-for-byte what CMC sent. See D11. |
 
 Index on `(endpoint, fetched_at)`. This table only ever grows; it is never updated.
 
@@ -47,7 +48,7 @@ migration.
 |---|---|
 | `id` | BIGINT PK |
 | `raw_sample_id` | BIGINT FK → `raw_samples` |
-| `metric` | VARCHAR(60) — `fear_greed`, `social_volume`, `funding_weighted`, `open_interest`, `liquidations_24h` |
+| `metric` | VARCHAR(60) — `fear_greed`, `post_volume`, `trending_churn`, `turnover`, `exchange_hhi`, `reserve_change` |
 | `value` | DECIMAL(24,8) |
 | `sampled_at` | DATETIME(3) UTC — denormalised from the raw row for query speed |
 

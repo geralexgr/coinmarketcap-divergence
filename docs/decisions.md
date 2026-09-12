@@ -102,11 +102,75 @@ only if batching turns out to be generous — see `open-questions.md` item 6.
 
 ---
 
+---
+
+## D10 — The Money axis is built from turnover, not derivatives
+**Date:** 12 September 2026 · **Status:** settled by measurement
+
+Funding rate, open interest and liquidations have **no endpoint on the CoinMarketCap API**. 38
+candidate paths probed across `/v1/` to `/v4/`; every one absent. This is not a plan-tier
+restriction — the paths do not exist, so no upgrade produces them. Evidence and method in
+`endpoint-access.md`; reproduce with `php bin/probe-paths.php`.
+
+The Money axis therefore measures committed money indirectly, from what does exist:
+
+| Input | Source | Reading |
+|---|---|---|
+| Turnover — `volume_24h / market_cap` | `/v2/cryptocurrency/quotes/latest` | money changing hands relative to the size of the thing it moves in |
+| Exchange concentration | `/v1/exchange/listings/latest` | whether that flow is broad or sitting in one venue |
+| Exchange reserve movement | `/v1/exchange/assets` | what is parked where |
+| Derivatives volume share, **if the field exists** | `/v1/global-metrics/quotes/latest` | the one positioning number possibly still reachable |
+
+**Why this is still worth building:** the product was never "we have funding rates" — CoinMarketCap
+publishes both halves of this and never puts them on the same axis. Turnover against attention is
+still a gap nothing on the site shows, and it is still measured rather than predicted. It is a
+weaker Money axis and the method page says so plainly, in those words.
+
+**What it costs:** the axis measures money *moving* rather than money *committed and leveraged*.
+Turnover cannot distinguish a large spot rotation from a leveraged build-up. The method page states
+this limitation rather than implying a precision the inputs do not have.
+
+**Revisit if:** `/v2/cryptocurrency/market-pairs/latest?category=derivatives` turns out to carry open
+interest, or `global_metrics` carries `derivatives_volume_24h`. Both are payload inspections, not new
+endpoints, and both are the first thing to check once a real key exists.
+
+---
+
+## D11 — Raw payloads stored as LONGTEXT, not a MySQL JSON column
+**Date:** 12 September 2026 · **Status:** settled
+
+`docs/data-model.md` originally proposed a JSON column. A MySQL JSON column reparses and
+re-serialises on write: key order and whitespace are not preserved, so what comes back out is not
+byte-for-byte what CoinMarketCap sent.
+
+**Why it matters:** D3 says the stored payload is the source of truth, which only holds if it is
+verbatim. LONGTEXT also works on MySQL 5.6, which removes one host dependency before the host has
+been checked.
+
+**Revisit if:** a query needs to filter inside payloads at speed. Extraction into typed tables is
+the answer to that, not changing the column type.
+
+---
+
+## D12 — Path existence is probed separately from plan access
+**Date:** 12 September 2026 · **Status:** settled
+
+Two scripts, because they answer different questions and one of them needs no key:
+`bin/probe-paths.php` maps what exists, `bin/verify-endpoints.php` maps what our plan may call.
+
+**Why:** CMC answers an unknown path with **HTTP 200** and `error_code: 500` "The system is busy".
+Reading the HTTP status alone recorded six non-existent derivatives endpoints as working. The
+prober carries two control paths that must read as absent on every run, so a routing change on
+CMC's side shows up as a failed control rather than as silently wrong results.
+
+---
+
 ## Pending decisions
 
 These are waiting on `open-questions.md` and must be recorded here once settled:
 
-- Money axis inputs, final — depends on derivatives availability (question 2)
-- Voice axis inputs, final — depends on fear and greed availability (question 3)
+- Money axis inputs, final — settled in D10, but the weights wait on real distributions
+- Voice axis inputs, final — fear and greed exists as an endpoint (question 3); which of the
+  Voice candidates our plan may call is still open (question 1)
 - Market-wide cadence — depends on the cron floor (question 4)
 - Percentile window length (question 7)

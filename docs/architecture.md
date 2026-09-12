@@ -69,7 +69,7 @@ not already contain, and it cannot exist before them. See `mcp-tools.md`.
 
 | What | Interval | Rows/day | Notes |
 |---|---|---|---|
-| Market-wide | 5 min | ~288 | fear and greed, aggregate social, aggregate derivatives |
+| Market-wide | 5 min | ~288 | fear and greed, trending, community posts, global metrics, exchange volume |
 | Per asset | 15 min | ~9,600 | top ~100 assets, batched |
 
 Roughly 6k market rows and 600k asset rows over three weeks — about 100 MB with indexes. Comfortable
