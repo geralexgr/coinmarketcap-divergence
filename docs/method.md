@@ -36,31 +36,48 @@ and the running one is visible, and so a plan change needs no code — see [D16]
 
 ### Money — what the market has committed
 
-**Read this before trusting the axis.** It was designed around funding rates, open interest and
-liquidations. None of those exist on the CoinMarketCap API at any version — 38 paths probed, all
-absent, and not as a plan restriction ([D10](decisions.md)). What follows measures money *moving*
-and money *at rest*, not money *committed and leveraged*. Turnover cannot distinguish a large spot
-rotation from a leveraged build-up, because nothing in the available data carries leverage.
+This axis measures money **committed and at risk**: positions currently held, what they cost to
+hold, and what got closed by force.
 
 | Input | Endpoint | Range | Weight | Status |
 |---|---|---|---|---|
-| Turnover — `total_volume_24h / total_market_cap` | `global_metrics` | 0.005 → 0.05 | 0.35 | **in use** |
-| Derivative share — `derivatives_volume_24h / total_volume_24h` | `global_metrics` | 2 → 12 × | 0.30 | **in use** |
-| Stablecoin share of volume, **inverted** | `global_metrics` | 0.5 → 1.2 | 0.20 | **in use** |
-| Exchange reserve movement, absolute 24h change | `exchange_assets` | 0 → 0.04 | 0.15 | **in use** |
-| Exchange concentration (HHI) | `exchange_listings` | 0.05 → 0.35 | 0.00 | 403 on this plan |
+| Open interest | `derivatives_pairs` | $40bn → $120bn | 0.30 | **in use** |
+| Funding rate, OI-weighted | `derivatives_pairs` | −0.0003 → 0.0008 | 0.20 | **in use** |
+| Liquidations, 24h | `liquidations` | $50m → $1.5bn | 0.20 | **in use** |
+| Open interest ÷ derivative volume | `derivatives_pairs` | 0.3 → 1.5 | 0.15 | **in use** |
+| Turnover — `total_volume_24h / total_market_cap` | `global_metrics` | 0.005 → 0.05 | 0.15 | **in use** |
+| Derivative share of activity | `global_metrics` | 2 → 12 × | 0.00 | superseded |
+| Stablecoin share of volume, inverted | `global_metrics` | 0.5 → 1.2 | 0.00 | superseded |
+| Exchange reserve movement | `exchange_assets` | 0 → 0.04 | 0.00 | superseded |
+| Derivative venue concentration (HHI) | `derivatives_exchanges` | 0.02 → 0.30 | 0.00 | recorded, range not yet set |
+| Spot venue concentration (HHI) | `exchange_listings` | 0.05 → 0.35 | 0.00 | 403 on this plan |
 
-**Derivative share is the one positioning-shaped number reachable.** `global-metrics` does carry
-derivative volume — measured at 7.4× spot volume on 13 September 2026 — so how much of the day's
-activity happened in contracts rather than in the asset is available. It is still a volume figure:
-it says how much was traded, never how much is still held.
+**This axis was rebuilt on 13 September 2026, and the rebuild is worth knowing about.** For its
+first day it ran on turnover and three substitutes, because [D10](decisions.md) had recorded — after
+probing 38 paths — that the CoinMarketCap API carries no funding rate, open interest or liquidation
+data. That was wrong: the probe covered `/v1/` to `/v4/` and the derivatives family lives under
+`/v5/`. See [D20](decisions.md). The substitutes are kept in the table at weight zero rather than
+deleted, so a version 1 score and a version 2 score can be compared honestly.
 
-**Stablecoin share is inverted** because a high stablecoin share of volume is money standing still —
-value changing hands without risk being taken.
+**Open interest is a level, not a flow.** Dollars currently committed to BTC derivative positions,
+summed across every venue CoinMarketCap tracks — $76.6bn when measured. It is the most direct answer
+in the API to "how much money is at risk here", and it is the reason this axis no longer needs a
+disclaimer about measuring the wrong thing.
 
-**Reserve movement is absolute.** The method makes no claim about which direction money leaving an
-exchange points; that reading is an interpretation, and interpretation is what this product does not
-do. Magnitude of repositioning only.
+**Funding is weighted by open interest, not averaged flat.** A funding rate is a rate, so summing it
+is meaningless and a plain mean lets a dead venue with one contract count as much as Binance.
+Weighting by each pair's open interest is what "what is the market paying to hold this position"
+actually means. Only perpetuals contribute: a dated future has a basis and no funding rate, and
+averaging its structural absence in as a zero would drag the figure toward nothing.
+
+**Liquidations are the least ambiguous number in the product.** Positions closed by the exchange
+rather than by their owner. Recorded market-wide and split long from short, because which side got
+caught out is a fact about what happened, not a forecast of what follows.
+
+**What the axis still cannot see.** Open interest is BTC only — the derivatives endpoint takes one
+symbol per call and a hundred assets would be a hundred credits against a 15,000 credit month. BTC
+is the standard benchmark for market-wide leverage, but an altcoin-led leverage build would show up
+here late and muted.
 
 ### Per asset
 

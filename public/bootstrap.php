@@ -133,13 +133,35 @@ function fmt_native(?float $value, string $unit): string
 
     return match (true) {
         str_contains($unit, 'index')          => number_format($value, 0),
+        // Dollar figures run to eleven digits. $76.7bn is readable; 76,702,040,900 is not.
+        str_contains($unit, 'USD')            => fmt_usd_short($value),
         str_contains($unit, 'x spot')         => number_format($value, 2) . '×',
+        // A funding rate is ~0.00004 per interval. Two decimals renders it as 0.00 —
+        // an input that is doing real work in the score, displayed as nothing. Shown as
+        // a percentage, signed, because the sign is which side is paying.
+        str_contains($unit, 'funding interval') => ($value >= 0 ? '+' : '−') . number_format(abs($value) * 100, 4) . '%',
         str_contains($unit, '%')              => number_format($value, 2) . '%',
         str_contains($unit, 'share'), str_contains($unit, 'volume / market cap'),
         str_contains($unit, 'change'), str_contains($unit, 'HHI')
                                               => number_format($value, 4),
+        str_contains($unit, 'ratio')          => number_format($value, 2),
         str_contains($unit, 'position')       => number_format($value, 0),
         default                               => number_format($value, 2),
+    };
+}
+
+/** $76,702,040,900 as $76.7bn. Large money is read at a glance or not at all. */
+function fmt_usd_short(float $value): string
+{
+    $abs = abs($value);
+    $sign = $value < 0 ? '−' : '';
+
+    return match (true) {
+        $abs >= 1e12 => $sign . '$' . number_format($abs / 1e12, 2) . 'tn',
+        $abs >= 1e9  => $sign . '$' . number_format($abs / 1e9, 1) . 'bn',
+        $abs >= 1e6  => $sign . '$' . number_format($abs / 1e6, 1) . 'm',
+        $abs >= 1e3  => $sign . '$' . number_format($abs / 1e3, 1) . 'k',
+        default      => $sign . '$' . number_format($abs, 0),
     };
 }
 

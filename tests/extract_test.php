@@ -254,3 +254,109 @@ test('nothing extracted is a NaN or an infinity', function (): void {
         }
     }
 });
+
+// ---------------------------------------------------------------------------
+// The leverage inputs — the ones D10 said did not exist.
+//
+// These matter more than most: they are the Money axis, they arrive in a payload shape
+// nobody here had seen until 13 Sep 2026, and every one of them is an aggregate over
+// ~50 pairs or ~100 assets. An aggregation bug produces a number that looks entirely
+// reasonable on a chart and is wrong.
+// ---------------------------------------------------------------------------
+
+test('derivative pairs give open interest, funding and basis', function (): void {
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => [
+        'symbol' => 'BTC',
+        'market_pairs' => [
+            ['category' => 'perpetual', 'exchange_reported_quotes' => [[
+                'open_interest' => 1000.0, 'funding_rate' => 0.001, 'index_basis' => 0.01,
+                'volume_24h_quote' => 5000.0]]],
+            ['category' => 'perpetual', 'exchange_reported_quotes' => [[
+                'open_interest' => 3000.0, 'funding_rate' => 0.005, 'index_basis' => 0.02,
+                'volume_24h_quote' => 15000.0]]],
+        ],
+    ]]);
+    $r = extract_sample('derivatives_pairs', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_close(4000.0, $m['open_interest'], 'open interest is the sum of the pairs');
+    assert_close(20000.0, $m['derivative_volume_24h'], 'so is volume');
+    assert_close(0.2, $m['oi_to_volume'], 'open interest over volume');
+    // Weighted by open interest: (0.001*1000 + 0.005*3000) / 4000 = 0.004.
+    // A plain mean would give 0.003, letting the small pair count as much as the big one.
+    assert_close(0.004, $m['funding_rate'], 'funding is weighted by open interest, not averaged flat');
+});
+
+test('a dated future is counted in open interest but not in funding', function (): void {
+    // Futures have a basis and no funding rate. Averaging their absent rate in as a zero
+    // would drag the market funding figure toward nothing for a structural reason.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => ['market_pairs' => [
+        ['category' => 'perpetual', 'exchange_reported_quotes' => [['open_interest' => 1000.0, 'funding_rate' => 0.01]]],
+        ['category' => 'futures',   'exchange_reported_quotes' => [['open_interest' => 9000.0, 'index_basis' => 0.05]]],
+    ]]]);
+    $r = extract_sample('derivatives_pairs', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_close(10000.0, $m['open_interest'], 'both contribute open interest');
+    assert_close(0.01, $m['funding_rate'], 'only the perpetual contributes funding');
+    assert_same(1.0, $m['perpetual_count'], 'and only one of them is a perpetual');
+});
+
+test('liquidations split long from short and give the side share', function (): void {
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => ['cryptocurrencies' => [
+        ['symbol' => 'BTC', 'quotes' => [['total_liquidations_24h' => 600.0,
+            'long_liquidations_24h' => 450.0, 'short_liquidations_24h' => 150.0, 'total_liquidations_1h' => 60.0]]],
+        ['symbol' => 'ETH', 'quotes' => [['total_liquidations_24h' => 400.0,
+            'long_liquidations_24h' => 150.0, 'short_liquidations_24h' => 250.0, 'total_liquidations_1h' => 40.0]]],
+    ]]]);
+    $r = extract_sample('liquidations', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_close(1000.0, $m['liquidations_24h'], 'totals sum across assets');
+    assert_close(600.0, $m['liquidations_long_24h'], 'so do longs');
+    assert_close(0.6, $m['liquidation_long_share'], 'the share is longs over the two sides');
+    assert_same(2.0, $m['liquidated_asset_count'], 'two assets carried a total');
+});
+
+test('a day with no liquidations on one side does not divide by zero', function (): void {
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => ['cryptocurrencies' => [
+        ['symbol' => 'BTC', 'quotes' => [['total_liquidations_24h' => 100.0,
+            'long_liquidations_24h' => 100.0, 'short_liquidations_24h' => 0.0]]],
+    ]]]);
+    $r = extract_sample('liquidations', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_close(1.0, $m['liquidation_long_share'], 'all longs is a share of 1, not an error');
+});
+
+test('liquidations write no per-asset rows, because the payload carries no asset id', function (): void {
+    // The crypto_id in a liquidation quote is the CONVERT currency (USD, 2781), not the
+    // asset. Reading it as the asset id would file every row in the table under 2781.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => ['cryptocurrencies' => [
+        ['symbol' => 'BTC', 'quotes' => [['crypto_id' => 2781, 'total_liquidations_24h' => 100.0]]],
+    ]]]);
+    $r = extract_sample('liquidations', $body);
+
+    assert_same([], $r['asset'], 'no per-asset rows are written from this payload');
+    assert_true($r['market'] !== [], 'but the market-wide totals are');
+});
+
+test('derivative venue concentration reads the usd fields the payload actually uses', function (): void {
+    // Field names confirmed against the live payload: derivative_volume_usd and
+    // open_interest_usd, nested in a quotes block. An earlier guess used volume_24h and
+    // silently extracted nothing.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => ['exchanges' => [
+        ['exchange_name' => 'A', 'quotes' => [['derivative_volume_usd' => 75.0, 'open_interest_usd' => 300.0]]],
+        ['exchange_name' => 'B', 'quotes' => [['derivative_volume_usd' => 25.0, 'open_interest_usd' => 100.0]]],
+    ]]]);
+    $r = extract_sample('derivatives_exchanges', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_close(0.625, $m['derivative_exchange_hhi'], '0.75^2 + 0.25^2');
+    assert_close(400.0, $m['exchange_open_interest'], 'open interest sums across venues');
+});

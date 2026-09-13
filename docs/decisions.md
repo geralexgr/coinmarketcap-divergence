@@ -105,6 +105,11 @@ only if batching turns out to be generous. It is: 100 ids in one call, confirmed
 ---
 
 ## D10 — The Money axis is built from turnover, not derivatives
+
+> **Overturned on 13 September 2026 by [D20](#d20--d10-was-wrong-the-derivatives-endpoints-exist-under-v5).**
+> The derivatives endpoints do exist; they live under `/v5/`, which the probe described
+> below never reached. The reasoning is left intact because the mistake is instructive:
+> everything about the method here was sound except the search space it was based on.
 **Date:** 12 September 2026 · **Status:** settled by measurement
 
 Funding rate, open interest and liquidations have **no endpoint on the CoinMarketCap API**. 38
@@ -364,6 +369,57 @@ extraction lag in `app/bin/health.php`, days later.
 **The general lesson, applied elsewhere in the codebase:** anything that reads `raw_samples` reads
 one payload at a time. The scoring layer loads `market_metric`, which is small typed rows, not
 payloads.
+
+---
+
+## D20 — D10 was wrong: the derivatives endpoints exist, under /v5/
+
+**Date:** 13 September 2026 · **Status:** settled · **Overturns D10**
+
+D10 recorded, after probing 38 candidate paths, that the CoinMarketCap API has no
+derivatives endpoints — no funding rate, no open interest, no liquidations — and rebuilt
+the Money axis around turnover as an explicitly weaker substitute. That finding was the
+single most load-bearing claim in the project. It was wrong.
+
+**The probe covered `/v1/` to `/v4/`. The derivatives family lives under `/v5/`.**
+
+Confirmed with the same 401-versus-404 method the original probe used, controls included:
+
+| Path | Carries |
+|---|---|
+| `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | `open_interest`, `funding_rate`, `index_basis`, per pair |
+| `/v5/derivatives/liquidations/cryptocurrency/list/latest` | long and short liquidations at 1h, 4h, 24h, 100 assets per credit |
+| `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest |
+
+All three are callable on this key. Measured on 13 September 2026: BTC open interest
+$76.6bn, open-interest-weighted funding +0.0043%, 24h liquidations $188m of which 60% were
+longs.
+
+**What it changes.** The Money axis is now what it was designed to be. It measures money
+*committed and at risk* — positions held, what they cost to hold, and what got closed by
+force — rather than money *changing hands*. Turnover drops from the headline input to a
+supporting one. `method_version` goes to 2 and the substitutes stay declared at weight
+zero, so a reader comparing a version 1 score to a version 2 score can see exactly what
+moved.
+
+**How it was found, which is the uncomfortable part.** Not by re-probing. By reading a
+competing hackathon entry's README and noticing it called endpoints this repo had spent
+two days documenting as non-existent.
+
+**Why the original probe missed it.** It enumerated paths by guessing names under version
+prefixes the repo already knew about. `/v5/` was not in that list because nothing this
+project used lived there, so the search space was defined by what was already believed. A
+probe built that way can only ever confirm the shape of its own assumptions. Two other
+entries in the same hackathon use `/v5/real-world-assets/*`, which would have surfaced the
+version prefix immediately had anyone looked outward.
+
+**What was changed so it cannot recur:** `bin/probe-paths.php` now sweeps version prefixes
+`/v1/` through `/v6/` for every path family rather than only the versions already in use,
+and the endpoint catalogue records the version sweep that was actually run.
+
+**What did not change.** The Voice axis restriction is real and was re-verified endpoint by
+endpoint on the same day: every trending, community and content path still answers 403.
+D14 and D16 stand.
 
 ---
 

@@ -30,11 +30,13 @@ declare(strict_types=1);
  * payloads already on disk. That is the whole point of storing them verbatim (D3).
  *
  * 1 — first extractor, written against documented response shapes.
- * 2 — confirmed against live payloads. Adds exchange_assets (the only surviving view of
- *     reserves on this plan), the derivatives-to-spot ratio, and the per-asset
- *     attention proxy the screener needs while every trending endpoint is 403.
+ * 2 — confirmed against live payloads. Adds exchange_assets, the derivatives-to-spot
+ *     ratio, and the per-asset attention proxy.
+ * 3 — the leverage inputs. Open interest, funding rate and basis from the derivative
+ *     pairs endpoint, and long/short liquidations. These are the inputs the Money axis
+ *     was designed around and that D10 wrongly recorded as non-existent; see D20.
  */
-const EXTRACTOR_VERSION = 2;
+const EXTRACTOR_VERSION = 3;
 
 /**
  * @return array{
@@ -97,6 +99,9 @@ function extractor_for(string $endpoint): ?callable
         'fear_and_greed'           => 'extract_fear_and_greed',
         'exchange_listings'        => 'extract_exchange_listings',
         'exchange_assets'          => 'extract_exchange_assets',
+        'derivatives_pairs'        => 'extract_derivatives_pairs',
+        'liquidations'             => 'extract_liquidations',
+        'derivatives_exchanges'    => 'extract_derivatives_exchanges',
         'content_latest'           => 'extract_content_latest',
         'community_trending_topic' => 'extract_trending_topic',
         'community_trending_token' => 'extract_trending_ranked',
@@ -308,6 +313,236 @@ function extract_exchange_assets(mixed $data): array
         ['metric' => 'exchange_reserve_usd', 'value' => $reserveUsd],
         ['metric' => 'exchange_holdings',    'value' => (float) $holdings],
     ]];
+}
+
+/**
+ * Open interest, funding rate and basis — the Money axis as originally designed.
+ *
+ * This is the payload D10 spent two days concluding did not exist. It does; it lives
+ * under /v5/, which the original 38-path probe never reached (D20).
+ *
+ * Aggregation matters here. A pair's open interest is a *level* in dollars, so the
+ * market figure is the sum. A funding rate is a *rate*, so summing it is meaningless and
+ * a plain mean lets a dead venue with one contract outvote Binance — it is therefore
+ * weighted by each pair's open interest, which is what "what is the market paying to
+ * hold this position" actually means.
+ *
+ * Only perpetuals carry funding. Dated futures are counted in open interest and skipped
+ * for funding, because a future has a basis and no funding rate, and averaging a
+ * structural zero into the rate would drag it toward nothing.
+ */
+function extract_derivatives_pairs(mixed $data): array
+{
+    $pairs = $data['market_pairs'] ?? null;
+    if (!is_array($pairs)) {
+        return ['status' => 'skipped', 'note' => 'no market_pairs block in the derivatives payload'];
+    }
+
+    $openInterest = 0.0;
+    $volume = 0.0;
+    $fundingWeighted = 0.0;
+    $fundingWeight = 0.0;
+    $basisWeighted = 0.0;
+    $basisWeight = 0.0;
+    $perps = 0;
+    $counted = 0;
+
+    foreach ($pairs as $pair) {
+        if (!is_array($pair)) {
+            continue;
+        }
+        // exchange_reported_quotes carries the venue's own open interest and funding;
+        // the adjusted `quotes` block does not.
+        $q = $pair['exchange_reported_quotes'][0] ?? null;
+        if (!is_array($q)) {
+            continue;
+        }
+
+        $oi = is_numeric($q['open_interest'] ?? null) ? (float) $q['open_interest'] : null;
+        if ($oi !== null && $oi > 0) {
+            $openInterest += $oi;
+            $counted++;
+        }
+        if (is_numeric($q['volume_24h_quote'] ?? null)) {
+            $volume += (float) $q['volume_24h_quote'];
+        }
+
+        $isPerp = ($pair['category'] ?? '') === 'perpetual';
+        if ($isPerp) {
+            $perps++;
+        }
+
+        // Weight by open interest: the rate being paid on a large position matters more
+        // than the same rate on a token one.
+        $weight = $oi !== null && $oi > 0 ? $oi : 0.0;
+        if ($isPerp && is_numeric($q['funding_rate'] ?? null) && $weight > 0) {
+            $fundingWeighted += (float) $q['funding_rate'] * $weight;
+            $fundingWeight += $weight;
+        }
+        if (is_numeric($q['index_basis'] ?? null) && $weight > 0) {
+            $basisWeighted += (float) $q['index_basis'] * $weight;
+            $basisWeight += $weight;
+        }
+    }
+
+    if ($counted === 0) {
+        return ['status' => 'skipped', 'note' => 'no derivative pair carried a usable open interest'];
+    }
+
+    $market = [
+        ['metric' => 'open_interest',        'value' => $openInterest],
+        ['metric' => 'derivative_pair_count','value' => (float) $counted],
+        ['metric' => 'perpetual_count',      'value' => (float) $perps],
+    ];
+    if ($volume > 0) {
+        $market[] = ['metric' => 'derivative_volume_24h', 'value' => $volume];
+        // Open interest against the day's volume: how much of the trading turned into
+        // held positions rather than churn. High means positions are being carried.
+        $market[] = ['metric' => 'oi_to_volume', 'value' => $openInterest / $volume];
+    }
+    if ($fundingWeight > 0) {
+        $market[] = ['metric' => 'funding_rate', 'value' => $fundingWeighted / $fundingWeight];
+    }
+    if ($basisWeight > 0) {
+        $market[] = ['metric' => 'index_basis', 'value' => $basisWeighted / $basisWeight];
+    }
+
+    return ['market' => $market];
+}
+
+/**
+ * Liquidations — positions closed by force rather than by choice.
+ *
+ * The single most informative call in the product per credit: 100 assets for one, and it
+ * carries both the market-wide total and per-asset detail.
+ *
+ * `long_short_liquidation_skew` is the share of the 24h total that was longs, 0 to 1.
+ * Recorded as a share rather than a ratio so it cannot divide by zero and cannot run to
+ * infinity on a day when one side is untouched. It is a description of which side was
+ * caught out, not a claim about what happens next.
+ */
+function extract_liquidations(mixed $data): array
+{
+    $assets = $data['cryptocurrencies'] ?? null;
+    if (!is_array($assets)) {
+        return ['status' => 'skipped', 'note' => 'no cryptocurrencies block in the liquidations payload'];
+    }
+
+    $total24 = 0.0;
+    $long24 = 0.0;
+    $short24 = 0.0;
+    $total1h = 0.0;
+    $asset = [];
+    $counted = 0;
+
+    foreach ($assets as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $q = $entry['quotes'][0] ?? null;
+        if (!is_array($q)) {
+            continue;
+        }
+
+        $t24 = is_numeric($q['total_liquidations_24h'] ?? null) ? (float) $q['total_liquidations_24h'] : null;
+        if ($t24 === null) {
+            continue;
+        }
+        $counted++;
+        $total24 += $t24;
+        $long24  += (float) ($q['long_liquidations_24h'] ?? 0);
+        $short24 += (float) ($q['short_liquidations_24h'] ?? 0);
+        $total1h += (float) ($q['total_liquidations_1h'] ?? 0);
+
+        // Per-asset rows need an id, and this payload identifies by symbol and slug
+        // only. crypto_id in the quote block is the *convert* currency (USD), not the
+        // asset, so it must not be used here — that would file every asset under 2781.
+        // The scoring layer joins on symbol via asset_universe instead.
+        $symbol = (string) ($entry['symbol'] ?? '');
+        if ($symbol !== '' && $t24 > 0) {
+            $asset[] = ['cmc_id' => 0, 'symbol' => $symbol, 'metric' => 'liquidations_24h', 'value' => $t24];
+        }
+    }
+
+    if ($counted === 0) {
+        return ['status' => 'skipped', 'note' => 'no asset in the liquidations payload carried a 24h total'];
+    }
+
+    $market = [
+        ['metric' => 'liquidations_24h',       'value' => $total24],
+        ['metric' => 'liquidations_long_24h',  'value' => $long24],
+        ['metric' => 'liquidations_short_24h', 'value' => $short24],
+        ['metric' => 'liquidations_1h',        'value' => $total1h],
+        ['metric' => 'liquidated_asset_count', 'value' => (float) $counted],
+    ];
+
+    $sided = $long24 + $short24;
+    if ($sided > 0) {
+        $market[] = ['metric' => 'liquidation_long_share', 'value' => $long24 / $sided];
+    }
+
+    // Per-asset rows are dropped: this payload has no CoinMarketCap id, and asset_metric
+    // is keyed on one. Keeping the market-wide totals is the useful half.
+    return ['market' => $market];
+}
+
+/**
+ * Derivative venues, for concentration. Recorded now, scored later.
+ *
+ * This is the replacement for the forbidden exchange_listings: same question — is flow
+ * broad or sitting in one venue — asked of the derivative market instead of spot.
+ */
+function extract_derivatives_exchanges(mixed $data): array
+{
+    $exchanges = $data['exchanges'] ?? (is_array($data) && array_is_list($data) ? $data : null);
+    if (!is_array($exchanges)) {
+        return ['status' => 'skipped', 'note' => 'no exchanges block in the derivative exchanges payload'];
+    }
+
+    $volumes = [];
+    $openInterest = 0.0;
+    foreach ($exchanges as $ex) {
+        if (!is_array($ex)) {
+            continue;
+        }
+        $q = is_array($ex['quotes'][0] ?? null) ? $ex['quotes'][0] : $ex;
+        // Field names confirmed against the live payload: the venue figures are
+        // derivative_volume_usd and open_interest_usd, inside a quotes block.
+        foreach (['derivative_volume_usd', 'volume_24h', 'derivative_volume_24h', 'volume_24h_usd'] as $k) {
+            if (is_numeric($q[$k] ?? null) && (float) $q[$k] > 0) {
+                $volumes[] = (float) $q[$k];
+                break;
+            }
+        }
+        foreach (['open_interest_usd', 'open_interest'] as $k) {
+            if (is_numeric($q[$k] ?? null)) {
+                $openInterest += (float) $q[$k];
+                break;
+            }
+        }
+    }
+
+    if ($volumes === []) {
+        return ['status' => 'skipped', 'note' => 'no derivative exchange carried a usable 24h volume'];
+    }
+
+    $total = array_sum($volumes);
+    rsort($volumes);
+    $hhi = 0.0;
+    foreach ($volumes as $v) {
+        $hhi += ($v / $total) ** 2;
+    }
+
+    $market = [
+        ['metric' => 'derivative_exchange_hhi',   'value' => $hhi],
+        ['metric' => 'derivative_exchange_count', 'value' => (float) count($volumes)],
+        ['metric' => 'derivative_top5_share',     'value' => array_sum(array_slice($volumes, 0, 5)) / $total],
+    ];
+    if ($openInterest > 0) {
+        $market[] = ['metric' => 'exchange_open_interest', 'value' => $openInterest];
+    }
+
+    return ['market' => $market];
 }
 
 // ---------------------------------------------------------------------------

@@ -11,15 +11,34 @@ Built for the CoinMarketCap API Hackathon.
 
 ## The screen
 
-![Divergence market view](docs/mockups/ui-market-view.png)
-
-*Design mockup. Replace with a screenshot of the running deployment once it has banked a few days of
-history — a picture of the real thing is worth more here than a drawing of it.*
+![The market view](docs/screenshots/market.png)
 
 Voice on the vertical axis, Money on the horizontal, each 0–100. The market sits at a point — and
 because the recorder has been running, that point sits at the end of a **trail** showing the path it
 took to get there. That trail is the part of this that cannot be reconstructed from an API call, by
 anyone, at any later date.
+
+Every input in the right-hand column carries the endpoint it came from and the minute it was
+sampled, so any number here can be checked against CoinMarketCap directly.
+
+*Captured from a local run against seeded history, so that the trail and the week-over-week figures
+have something to show. The live deployment records the same way and its own trail is building now;
+every number in the panel is produced by the same code path either way.*
+
+### The screener
+
+![The per-asset screener](docs/screenshots/screener.png)
+
+The same two measurements per asset, sorted by the gap between them. These axes exist nowhere on
+CoinMarketCap's own site.
+
+### The method page
+
+![The method page](docs/screenshots/method.png)
+
+Rendered directly from `app/scoring/inputs.php` — the same declaration the scorer runs from — so the
+page cannot describe a method the code does not implement. It states what the API plan forbids
+*before* it states the method.
 
 ---
 
@@ -30,7 +49,7 @@ Two scores, both normalised 0–100, both sampled continuously.
 | Score | Question it answers | Inputs actually in use |
 |---|---|---|
 | **Voice** | How much is the market talking? | fear and greed index |
-| **Money** | How much money is actually moving? | turnover, derivative share of activity, stablecoin share, exchange reserve movement |
+| **Money** | How much money is committed and at risk? | open interest, funding rate, liquidations, OI-to-volume, turnover |
 | **Divergence** | How far apart are they? | `money − voice`, signed |
 
 Four readings, from where the point sits:
@@ -78,11 +97,16 @@ Voice line without explaining it would be misrepresenting the market rather than
 forbidden inputs stay declared in the method at their intended weights and light up automatically if
 the plan changes — see [D16](docs/decisions.md).
 
-**And there are no derivatives endpoints at all.** The Money axis was designed around funding rates,
-open interest and liquidations. 38 candidate paths probed across `/v1/`–`/v4/`; every one absent —
-not 403, absent, so no plan upgrade produces them. What replaced them measures money *moving* and
-money *at rest*, not money *committed and leveraged*. See [D10](docs/decisions.md) and
-[docs/limits.md](docs/limits.md).
+**The Money axis measures real leverage.** Open interest, funding rate and liquidations, from the
+`/v5/` derivatives family — $76.6bn of BTC open interest, funding weighted by open interest across
+every venue, and 24h liquidations split long from short.
+
+Getting there involved being wrong in public first. This repo spent two days documenting, after
+probing 38 paths, that the CoinMarketCap API has **no** derivatives endpoints — because the probe
+swept `/v1/` to `/v4/` and the family lives under `/v5/`. [D20](docs/decisions.md) records the
+correction, how it was found, and what changed so the same class of miss cannot recur. The
+superseded inputs are still declared at weight zero, so a score from before the fix and one from
+after can be compared rather than silently swapped.
 
 ---
 
@@ -203,7 +227,10 @@ accident.
 | Axis | Endpoint | Used for | Access |
 |---|---|---|---|
 | Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | ✅ |
-| Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share, stablecoin share | ✅ |
+| **Money** | `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | **open interest, funding rate, basis** | ✅ |
+| **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations, 100 assets per credit** | ✅ |
+| **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest | ✅ |
+| Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share of activity | ✅ |
 | Money | `/v1/exchange/assets` | exchange reserve level, and its movement | ✅ |
 | Money | `/v2/cryptocurrency/quotes/latest` | per-asset turnover | ✅ |
 | Both | `/v1/cryptocurrency/listings/latest` | the asset universe and its per-asset inputs | ✅ |
@@ -321,8 +348,11 @@ root.
 - **50 requests/minute**, measured. Per-asset polling is batched: 100 assets is one call.
 - **15,000 credits/month** on the Basic plan, measured rather than assumed. This is the binding
   constraint on the whole product. Credits are read from each response and logged, not estimated.
-- **Cadence: 10 minutes market-wide, 30 minutes per asset** — set by the credit budget, not by
-  preference. About 624 credits a day. See [D15](docs/decisions.md) for the arithmetic.
+- **Per-endpoint cadence**, because one interval for everything wasted most of the budget: the
+  once-a-day fear and greed index was being fetched every tick for an identical value while the
+  leverage inputs genuinely move. Open interest, funding and liquidations every 15 minutes; the
+  universe every 30; reserves every 2 hours; sentiment every 3. **404 credits a day**, 19% under
+  budget — cheaper than the old schedule *and* carrying three more inputs.
 - Every cron run is short and stateless, and takes a lock so a slow run makes the next tick skip
   rather than pile up behind it. Shared hosts kill long-running processes.
 - The API key lives **outside the webroot** and never enters git.
