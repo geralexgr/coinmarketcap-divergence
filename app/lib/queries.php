@@ -113,9 +113,16 @@ function market_series(PDO $pdo, int $methodVersion, string $window = '7d', int 
  * The subquery pins every row to a single sample moment rather than mixing assets from
  * different minutes into one table, which would make the ordering meaningless.
  *
+ * **Stablecoins are excluded by default** (D21). A stablecoin has enormous turnover and
+ * essentially no narrative *by construction*, so it pins the Money axis high and the
+ * Voice axis low and lands at the top of a gap-ranked table every single time. On the
+ * live screener four of the top nine rows were USDT, USD1 and USDG — the most prominent
+ * findings in the product were a definition, not a measurement. They remain one filter
+ * click away, because their absence should be visible rather than silent.
+ *
  * @return array<int,array<string,mixed>>
  */
-function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap', ?string $quadrant = null, int $limit = 100): array
+function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap', ?string $quadrant = null, int $limit = 100, bool $includeStablecoins = false): array
 {
     $order = match ($sort) {
         'voice'  => 's.voice DESC',
@@ -126,7 +133,7 @@ function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap',
     };
 
     $sql =
-        'SELECT s.cmc_id, u.symbol, u.name, u.rank_last,
+        'SELECT s.cmc_id, u.symbol, u.name, u.rank_last, u.is_stablecoin,
                 s.voice, s.money, s.divergence, s.quadrant, s.basis, s.sampled_at,
                 s.voice_inputs, s.money_inputs, s.inputs_possible, s.method_version
            FROM scores s
@@ -137,6 +144,9 @@ function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap',
                 SELECT MAX(sampled_at) FROM scores
                  WHERE scope = :scope2 AND method_version = :version2
             )';
+    if (!$includeStablecoins) {
+        $sql .= ' AND u.is_stablecoin = 0';
+    }
     if ($quadrant !== null) {
         $sql .= ' AND s.quadrant = :quadrant';
     }
@@ -440,7 +450,7 @@ function normalise_score_row(array $row): array
             $row[$key] = (float) $row[$key];
         }
     }
-    foreach (['cmc_id', 'rank_last', 'voice_inputs', 'money_inputs', 'inputs_possible', 'method_version'] as $key) {
+    foreach (['cmc_id', 'rank_last', 'voice_inputs', 'money_inputs', 'inputs_possible', 'method_version', 'is_stablecoin'] as $key) {
         if (isset($row[$key])) {
             $row[$key] = (int) $row[$key];
         }

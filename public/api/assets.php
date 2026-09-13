@@ -23,12 +23,15 @@ $sort = query_choice('sort', ['gap', 'voice', 'money', 'symbol', 'rank'], 'gap')
 $quadrants = ['loud_and_leveraged', 'chatter_without_conviction', 'quiet_but_leveraged', 'apathy'];
 $quadrant = query_choice('quadrant', $quadrants, '') ?: null;
 $limit = max(1, min(500, (int) ($_GET['limit'] ?? 100)));
+// Excluded by default, matching the screener. ?stablecoins=1 includes them.
+$withStables = ($_GET['stablecoins'] ?? '') === '1';
 
-$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $quadrant, $limit);
+$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $quadrant, $limit, $withStables);
 
 echo json_encode([
     'sort'           => $sort,
     'quadrant'       => $quadrant,
+    'stablecoins'    => $withStables ? 'included' : 'excluded (pass ?stablecoins=1 to include)',
     'method_version' => METHOD_VERSION,
     // Per-asset scores rank each asset against the rest of the universe at one instant,
     // not against its own past. Stated in the response so a consumer cannot mistake

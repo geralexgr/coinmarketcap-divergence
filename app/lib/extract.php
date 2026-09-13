@@ -35,8 +35,9 @@ declare(strict_types=1);
  * 3 — the leverage inputs. Open interest, funding rate and basis from the derivative
  *     pairs endpoint, and long/short liquidations. These are the inputs the Money axis
  *     was designed around and that D10 wrongly recorded as non-existent; see D20.
+ * 4 — the stablecoin tag, so the screener can stop ranking artefacts above findings.
  */
-const EXTRACTOR_VERSION = 3;
+const EXTRACTOR_VERSION = 4;
 
 /**
  * @return array{
@@ -706,6 +707,7 @@ function extract_listings_latest(mixed $data): array
             'symbol' => (string) ($entry['symbol'] ?? ''),
             'name'   => (string) ($entry['name'] ?? ''),
             'rank'   => is_numeric($entry['cmc_rank'] ?? null) ? (int) $entry['cmc_rank'] : null,
+            'is_stablecoin' => entry_is_stablecoin($entry),
         ];
     }
 
@@ -718,6 +720,28 @@ function extract_listings_latest(mixed $data): array
         'universe' => $universe,
         'market'   => [['metric' => 'listings_count', 'value' => (float) count($universe)]],
     ];
+}
+
+/**
+ * Whether a listing is a stablecoin, from its own tags.
+ *
+ * Read from the payload rather than kept as a symbol list in code: a hard-coded list is
+ * wrong the moment a new one launches, and CoinMarketCap already publishes the answer.
+ *
+ * Matches any tag containing "stablecoin" — the payload carries several at once
+ * (`stablecoin`, `asset-backed-stablecoin`, `usd-stablecoin`, `fiat-stablecoin`) and
+ * which of them appear varies by asset, so matching the substring is more durable than
+ * enumerating the set.
+ */
+function entry_is_stablecoin(array $entry): bool
+{
+    foreach ((array) ($entry['tags'] ?? []) as $tag) {
+        if (is_string($tag) && str_contains($tag, 'stablecoin')) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**

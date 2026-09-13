@@ -423,6 +423,37 @@ D14 and D16 stand.
 
 ---
 
+## D21 — Stablecoins are excluded from the screener by default
+
+**Date:** 13 September 2026 · **Status:** settled
+
+The live screener's top rows were USDT, USD1, USDG and USDT again — four of the top nine were
+stablecoins, all reading "quiet, but leveraged" with the largest gaps in the table.
+
+That is not a finding. A stablecoin has enormous turnover and essentially no narrative **by
+construction**: that is what being a stablecoin *is*. Ranking the market by the gap between
+attention and money and then putting stablecoins at the top measures a definition, not a condition.
+The single most prominent output of the product was an artefact.
+
+**Settled: excluded by default, one filter click away, and the exclusion is stated on the page**
+rather than being silent. The JSON API matches, with `?stablecoins=1` to include them and a
+`stablecoins` field in every response saying which way it ran.
+
+**Read from the data, not hard-coded.** `listings/latest` carries a `tags` array, and stablecoins
+carry several tags containing the word — `stablecoin`, `asset-backed-stablecoin`, `usd-stablecoin`,
+`fiat-stablecoin` — with which of them appear varying by asset. Matching the substring is more
+durable than enumerating the set, and both are far better than a list of symbols in code, which
+would be wrong the day a new one launches. 14 of the tracked 100 are flagged.
+
+**Why not exclude them from recording too:** they are perfectly good data, they belong in the market
+aggregate, and the stablecoin share of volume is itself an input the Money axis used to carry. This
+is a presentation decision about one table, not a decision about what to measure.
+
+**Why not silently:** a reader who knows USDT should be at the top of that list and cannot see it
+would rightly wonder what else had been quietly removed.
+
+---
+
 ## Still undecided
 
 Nothing blocking. These are refinements that need data the deployment has not yet produced:

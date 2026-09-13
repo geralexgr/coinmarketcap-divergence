@@ -1,14 +1,31 @@
+<img src="public/assets/icon.svg" width="72" align="right" alt="">
+
 # Divergence
 
 **What the crypto market is *saying*, plotted against what it has actually *committed money to*.**
 
-CoinMarketCap publishes both halves of this — sentiment and community activity on one set of pages,
-volume and exchange flow on another — and never puts them on the same axis. That gap is the product.
+CoinMarketCap publishes both halves of this — sentiment on one set of pages, derivative positioning
+and flow on another — and never puts them on the same axis. That gap is the product.
 
 Built for the CoinMarketCap API Hackathon.
 
-**Live: https://coinmarketcap.geralexgr.com** · **Judging this? [JUDGE.md](JUDGE.md)** — how to check
-any number on the site against CoinMarketCap in about five minutes, and where we think it is weakest.
+### ▸ Live: **https://coinmarketcap.geralexgr.com**
+### ▸ Judging this? **[JUDGE.md](JUDGE.md)** — five checks, a minute each
+
+`JUDGE.md` shows how to verify any number on the site against CoinMarketCap directly, how to run the
+tests with no API key, and — at the end — where we think this is weakest, in our own words.
+
+---
+
+## What is unusual about this entry
+
+| | |
+|---|---|
+| **It records.** | CoinMarketCap has no historical endpoint for sentiment or positioning. Price history can be fetched retroactively; this cannot. Every point on the trail exists only because something was recording at the time, and it compounds daily. |
+| **The method is data, not prose.** | `app/scoring/inputs.php` declares every input, weight and range. The scorer runs from it and the public method page renders from it, so the page *cannot* describe a method the code does not implement. |
+| **It measures, never predicts.** | No signals, no entry levels, no buy/sell. A measurement can be checked against CoinMarketCap in thirty seconds; a prediction cannot be checked at all. There is a test that greps the generated copy for future-tense words. |
+| **The mistakes are in the repo.** | 21 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
+| **Missing inputs are dropped, not zeroed.** | Ten of seventeen endpoints are 403 on this key. Scores record how many inputs they actually used, and the app prints it. A zero would read as a quiet market; absence is a measurement of nothing. |
 
 ---
 
@@ -34,6 +51,10 @@ every number in the panel is produced by the same code path either way.*
 
 The same two measurements per asset, sorted by the gap between them. These axes exist nowhere on
 CoinMarketCap's own site.
+
+Stablecoins are excluded by default and the page says so. High turnover with no narrative is what a
+stablecoin *is*, so ranking them by that gap measures a definition rather than a condition — they
+were four of the top nine rows until [D21](docs/decisions.md). One click shows them again.
 
 ### The method page
 
@@ -286,7 +307,7 @@ to a leverage reading, and it is not on a chart anywhere on CoinMarketCap's site
 `/v3/totally-made-up/xyz` and `/v5/anything` both do it.
 
 Reading the HTTP status alone recorded six non-existent derivatives endpoints as working. Every
-response in this repo is classified by `cmc_outcome()` in [`lib/http.php`](lib/http.php), which
+response in this repo is classified by `cmc_outcome()` in [`lib/http.php`](app/lib/http.php), which
 reads the body's error code as well as the status, and `app/bin/probe-paths.php` runs two control paths
 on every invocation so a change in CMC's routing surfaces as a failed control rather than as
 silently wrong results.
@@ -335,7 +356,7 @@ divergence/
 │
 ├── public/                ← the document root, and the ONLY web-served directory
 │
-├── tests/                 58 tests, no framework, no network, no database
+├── tests/                 70 tests, no framework, no network, no database
 └── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
 
@@ -356,6 +377,10 @@ root.
   leverage inputs genuinely move. Open interest, funding and liquidations every 15 minutes; the
   universe every 30; reserves every 2 hours; sentiment every 3. **404 credits a day**, 19% under
   budget — cheaper than the old schedule *and* carrying three more inputs.
+- **The host enforces a 15-minute cron floor** and silently rewrites anything faster. Per-endpoint
+  cadence absorbs it completely: the poller is a cheap tick that decides what is due, so every
+  endpoint still gets the interval it declares. Under the previous design the same rewrite would
+  have tripled the gap between leverage samples.
 - Every cron run is short and stateless, and takes a lock so a slow run makes the next tick skip
   rather than pile up behind it. Shared hosts kill long-running processes.
 - The API key lives **outside the webroot** and never enters git.
