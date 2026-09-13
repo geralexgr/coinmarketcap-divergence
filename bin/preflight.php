@@ -36,10 +36,12 @@ echo str_repeat('-', 78) . "\n";
 // --- PHP itself -------------------------------------------------------------
 // The cron entry needs the absolute binary path; cron's PATH is not a login shell's.
 check('PHP CLI binary path', PHP_BINARY !== '', PHP_BINARY ?: 'unknown');
-// 8.0, not 7.4: lib/http.php uses match() and str_contains(), so a 7.4 host does not
-// fail at runtime with a clear message — it fails at parse time, before the poller can
-// say anything at all. The floor this checks has to be the floor the code actually has.
-check('PHP version', PHP_VERSION_ID >= 80000, PHP_VERSION . ' (need 8.0+)');
+// 8.1, not 7.4: lib/http.php uses match() and str_contains() (8.0), and
+// bin/verify-endpoints.php and lib/extract.php use array_is_list() (8.1). A host below
+// that does not fail at runtime with a clear message — it fails at parse time, before
+// anything can say why. The floor this checks has to be the floor the code actually has.
+// The deploy host runs 8.3, so this is a floor, not a target.
+check('PHP version', PHP_VERSION_ID >= 80100, PHP_VERSION . ' (need 8.1+; host runs 8.3)');
 check('SAPI is CLI', PHP_SAPI === 'cli', PHP_SAPI);
 
 foreach (['curl' => true, 'pdo_mysql' => true, 'json' => true, 'openssl' => true, 'zlib' => false] as $ext => $blocks) {

@@ -12,9 +12,16 @@ logs/
 /tmp/
 /var/
 
-# Verification output written by bin/verify-endpoints.php
-docs/endpoint-access.generated.md
-tests/fixtures/live/
+# Verification output written by bin/verify-endpoints.php.
+# The generated report IS committed: it is 17 real calls with timings and outcomes, and
+# it is the evidence behind docs/api-friction.md. It contains no key — the verifier
+# redacts, and CMC does not echo the header back.
+# The live payloads are not: they are large, they go stale, and they are one command to
+# regenerate. tests/live_test.php skips cleanly when they are absent.
+# Note the trailing /* : git does not descend into an excluded *directory*, so
+# "tests/fixtures/live/" would make the negation below silently do nothing.
+tests/fixtures/live/*
+!tests/fixtures/live/README.md
 
 # OS noise
 .DS_Store

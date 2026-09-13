@@ -4,10 +4,36 @@ Two different questions, answered by two different scripts, and they are easy to
 
 1. **Does the path exist on the API at all?** — `bin/probe-paths.php`. No key needed.
    **Answered 12 September 2026, below.**
-2. **Does our plan let us call it?** — `bin/verify-endpoints.php`. Needs the real key, run from
-   the host. **Still open — the ❓ column below.**
+2. **Does our plan let us call it?** — `bin/verify-endpoints.php`. Needs the real key.
+   **Answered 13 September 2026.** 17 endpoints called, 6 credits spent.
 
-Plan tier: Startup — 23 latest-data endpoints against Standard's 35.
+**Plan tier: Basic, not Startup.** `/v1/key/info` reports `credit_limit_monthly: 15000` and
+`rate_limit_minute: 50`. Seven endpoints are callable and ten answer HTTP 403. This is the single
+most consequential fact discovered about the project so far — see [decisions.md](decisions.md) D14
+and D15.
+
+| | Callable | Forbidden |
+|---|---|---|
+| **Voice** | `fear_and_greed`, `fear_and_greed_historical` | all 5 trending/community endpoints, both content endpoints |
+| **Money** | `quotes_latest`, `exchange_assets` | `exchange_listings`, `market_pairs_derivatives`, `price_performance` |
+| **Support** | `key_info`, `global_metrics`, `listings_latest` | — |
+
+Two headline consequences:
+
+- **The Voice axis lost six of its seven inputs.** What is left is the fear and greed index: one
+  number, updated **once a day**. An axis sampled every ten minutes off a daily number has daily
+  resolution, and `docs/method.md` must say so rather than implying otherwise.
+- **The Money axis got a positioning number back.** `global_metrics` carries
+  `derivatives_volume_24h` — $308bn against $41bn of adjusted spot volume on 13 Sep 2026 — plus
+  `derivatives_24h_percentage_change`. Market-wide only, no funding rate, no open interest, no
+  per-asset split. D10 stands per asset and is amended market-wide.
+
+`lib/endpoints.php` encodes these results in `endpoint_access_results()`, and `endpoints_to_poll()`
+refuses to schedule anything marked forbidden — a 403 costs a round trip, returns nothing, and
+buries real failures in `fetch_log`.
+
+The full generated table, one row per real call, is in
+[`endpoint-access.generated.md`](endpoint-access.generated.md), rewritten by every verifier run.
 
 ---
 
@@ -56,42 +82,48 @@ Recorded as **D10** in `decisions.md`. The Money axis is rebuilt from what does 
 
 | Endpoint | Field needed | Exists | Plan access | Notes |
 |---|---|---|---|---|
-| `/v2/cryptocurrency/quotes/latest` | `volume_24h`, `market_cap`, `volume_change_24h` | ✅ | ❓ | Turnover = volume ÷ market cap. Batched by id list. |
-| `/v1/exchange/listings/latest` | per-exchange 24h volume | ✅ | ❓ | Concentration across venues. |
-| `/v1/exchange/assets` | exchange wallet balances | ✅ | ❓ | Reserve movement. One call per exchange. |
-| `/v2/cryptocurrency/market-pairs/latest` | derivative pair volume, `category=derivatives` | ✅ | ❓ | **The last route to anything derivative-shaped.** Whether the payload carries open interest is unconfirmed — inspect it first. |
-| `/v1/global-metrics/quotes/latest` | `derivatives_volume_24h`, if present | ✅ | ❓ | **Inspect this payload before anything else.** If that field is in there, it is the one positioning number still reachable. |
+| `/v2/cryptocurrency/quotes/latest` | `volume_24h`, `market_cap`, `volume_change_24h` | ✅ | ✅ | Turnover = volume ÷ market cap. Batched by id list. |
+| `/v1/exchange/listings/latest` | per-exchange 24h volume | ✅ | ❌ 403 | Concentration across venues. |
+| `/v1/exchange/assets` | exchange wallet balances | ✅ | ✅ | Reserve movement. One call per exchange. |
+| `/v2/cryptocurrency/market-pairs/latest` | derivative pair volume, `category=derivatives` | ✅ | ❌ 403 | Forbidden on Basic, so **the open interest question cannot be answered without a plan upgrade.** |
+| `/v1/global-metrics/quotes/latest` | `derivatives_volume_24h`, if present | ✅ | ✅ | **Inspected 13 Sep 2026: the field is there and is callable.** $308bn. Also carries `derivatives_24h_percentage_change`, `total_volume_24h_reported` (5.1x adjusted), the defi and stablecoin blocks, and yesterday's deltas for cap, volume and dominance. |
 
-## Voice axis — paths confirmed, plan access still open
+## Voice axis — paths confirmed, and then mostly taken away
 
 Open question 3 is answered on the first half: fear and greed **is** an API endpoint, not only a
-chart on the site.
+chart on the site. Question 1 is answered on the second half, and the answer is that **seven of the
+nine Voice endpoints are forbidden on this plan.** Everything below with a ❌ exists, works, and is
+not ours.
 
 | Endpoint | Field needed | Exists | Plan access | Notes |
 |---|---|---|---|---|
-| `/v3/fear-and-greed/latest` | current index 0–100 | ✅ | ❓ | |
-| `/v3/fear-and-greed/historical` | index history | ✅ | ❓ | The one input that may have real history behind it — would backfill Voice before recording began. |
-| `/v1/community/trending/topic` | trending topics and rank | ✅ | ❓ | |
-| `/v1/community/trending/token` | trending tokens and rank | ✅ | ❓ | |
-| `/v1/cryptocurrency/trending/most-visited` | page views per asset | ✅ | ❓ | Attention that has not yet become a trade. |
-| `/v1/cryptocurrency/trending/latest` | trending search list | ✅ | ❓ | |
-| `/v1/cryptocurrency/trending/gainers-losers` | largest movers | ✅ | ❓ | Price-derived; recorded, probably not an input. |
-| `/v1/content/latest` | community post volume | ✅ | ❓ | |
-| `/v1/content/posts/top` | per-asset post engagement | ✅ | ❓ | Needs an `id`, so one call per asset. |
+| `/v3/fear-and-greed/latest` | current index 0–100 | ✅ | ✅ | |
+| `/v3/fear-and-greed/historical` | index history | ✅ | ✅ | **500 daily points, back to 1 May 2025.** The only backfillable input in the product — and now nearly the whole Voice axis. Payload arrives **newest-first**. |
+| `/v1/community/trending/topic` | trending topics and rank | ✅ | ❌ 403 | |
+| `/v1/community/trending/token` | trending tokens and rank | ✅ | ❌ 403 | |
+| `/v1/cryptocurrency/trending/most-visited` | page views per asset | ✅ | ❌ 403 | Attention that has not yet become a trade. |
+| `/v1/cryptocurrency/trending/latest` | trending search list | ✅ | ❌ 403 | |
+| `/v1/cryptocurrency/trending/gainers-losers` | largest movers | ✅ | ❌ 403 | Price-derived; recorded, probably not an input. |
+| `/v1/content/latest` | community post volume | ✅ | ❌ 403 | |
+| `/v1/content/posts/top` | per-asset post engagement | ✅ | ❌ 403 | Needs an `id`, so one call per asset. |
 
 ## Universe and support
 
 | Endpoint | Field needed | Exists | Plan access | Notes |
 |---|---|---|---|---|
-| `/v1/key/info` | credits used and remaining | ✅ | ❓ | Costs no credits. |
-| `/v1/cryptocurrency/listings/latest` | top 100: id, symbol, rank, volume | ✅ | ❓ | One call covers the universe. |
-| `/v1/global-metrics/quotes/latest` | total cap, total volume, dominance | ✅ | ❓ | |
+| `/v1/key/info` | credits used and remaining | ✅ | ✅ | Costs no credits. |
+| `/v1/cryptocurrency/listings/latest` | top 100: id, symbol, rank, volume | ✅ | ✅ | One call covers the universe. |
+| `/v1/global-metrics/quotes/latest` | total cap, total volume, dominance | ✅ | ✅ | |
 | `/v1/cryptocurrency/categories`, `/v1/cryptocurrency/airdrops` | — | ✅ | ❓ | Exist; no use identified yet. |
 | `/v4/dex/listings/quotes`, `/v4/dex/networks/list`, `/v4/dex/spot-pairs/latest` | on-chain volume | ✅ | ❓ | Unexplored. On-chain flow would be a genuine Money input if the plan reaches it. |
 
 ---
 
 ## Host checks — ❓ not yet run on the host
+
+The verification above was run from a container on a laptop, which answers what the *plan* permits
+but says nothing about what the *host* can reach. Open question 5 — outbound HTTPS from PHP CLI on
+cPanel — is still open, and `bin/preflight.php` has to be run over SSH to close it.
 
 `bin/preflight.php` fills this in. It must be run **on the cPanel host over SSH**, not on a laptop:
 the point is partly to prove the host itself can make these calls (open question 5).
@@ -103,7 +135,7 @@ the point is partly to prove the host itself can make these calls (open question
 | cPanel cron minimum interval | ❓ |
 | MySQL version and INSERT grant | ❓ |
 | Writable log dir outside webroot | ❓ |
-| Plan tier, credit limit, rate limit (from `/v1/key/info`) | ❓ |
+| Plan tier, credit limit, rate limit (from `/v1/key/info`) | ✅ Basic · 15,000 credits/month · 50 req/min · resets 1 Oct 2026. Key-dependent, not host-dependent, so this row is answered even though the rest are not |
 
 The only environment checked so far is a local `php:8.3-cli` container, which proves the code runs
 and reaches the API from somewhere — it says nothing about the host.
@@ -114,6 +146,6 @@ Settled by reading a real payload, so it needs the key.
 
 | Endpoint | Accepts id list | Max ids/call |
 |---|---|---|
-| `/v2/cryptocurrency/quotes/latest` | expected yes | ❓ — poller assumes 100 |
-| `/v2/cryptocurrency/market-pairs/latest` | expected no, one id | ❓ |
+| `/v2/cryptocurrency/quotes/latest` | expected yes | ✅ — poller assumes 100 |
+| `/v2/cryptocurrency/market-pairs/latest` | expected no, one id | ❌ 403 |
 | `/v1/content/posts/top` | no, one id | 1 |

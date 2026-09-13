@@ -14,7 +14,8 @@
  * no plan upgrade will produce it — for the derivatives block, 404 everywhere settles
  * open question 2 against us and the Money axis takes the documented fallback.
  *
- * Costs one credit per endpoint that answers. Roughly 20 credits of a 300,000 budget.
+ * Costs one credit per endpoint that answers. Measured 13 Sep 2026: 6 credits of a
+ * 15,000/month budget — forbidden endpoints are charged nothing.
  */
 
 declare(strict_types=1);

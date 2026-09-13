@@ -141,13 +141,53 @@ $creditsMonth = $pdo->query(
 )->fetchColumn();
 
 echo "\nCredits\n" . str_repeat('-', 84) . "\n";
+
+// The monthly limit is not a constant. This repo assumed 300,000 for a fortnight and the
+// real figure turned out to be 15,000 (D14), so the authoritative source is the API
+// itself: /v1/key/info costs nothing, is polled every run, and credits_left_month is
+// extracted from it. Config is the fallback for before the first sample lands.
+$limit = (int) ($config['credit_limit_monthly'] ?? 15000);
+$reportedLeft = null;
+if (derived_schema_is_present($pdo)) {
+    $reported = $pdo->query(
+        "SELECT metric, value FROM market_metric
+          WHERE metric IN ('credits_left_month','credits_used_month')
+            AND sampled_at = (SELECT MAX(sampled_at) FROM market_metric WHERE metric = 'credits_left_month')"
+    )->fetchAll();
+    $seen = [];
+    foreach ($reported as $row) {
+        $seen[(string) $row['metric']] = (float) $row['value'];
+    }
+    if (isset($seen['credits_left_month'], $seen['credits_used_month'])) {
+        $limit = (int) ($seen['credits_left_month'] + $seen['credits_used_month']);
+        $reportedLeft = (int) $seen['credits_left_month'];
+    }
+}
+
 printf(
-    "  %s in the last 24h · %s this calendar month of 300,000 (%.1f%%)\n",
+    "  %s in the last 24h · %s this calendar month of %s (%.1f%%)\n",
     number_format((int) $credits),
     number_format((int) $creditsMonth),
-    100 * (int) $creditsMonth / 300000
+    number_format($limit),
+    $limit > 0 ? 100 * (int) $creditsMonth / $limit : 0.0
 );
-printf("  At the last 24h rate, a 30-day month costs %s.\n", number_format((int) $credits * 30));
+if ($reportedLeft !== null) {
+    printf("  CoinMarketCap reports %s credits left this cycle.\n", number_format($reportedLeft));
+}
+
+$burn = (int) $credits;
+printf("  At the last 24h rate, a 30-day month costs %s.\n", number_format($burn * 30));
+
+// The failure this catches is specific and was nearly shipped: a cadence that looks fine
+// for a week and runs the budget dry before the submission date.
+if ($burn > 0 && $limit > 0) {
+    $daysLeft = ($limit - (int) $creditsMonth) / $burn;
+    printf("  At that rate the budget lasts %.1f more days.\n", $daysLeft);
+    if ($daysLeft < 14) {
+        printf("  BUDGET WARNING — under 14 days of headroom. See D15 on cadence.\n");
+        $problem = true;
+    }
+}
 
 // --- Extraction -------------------------------------------------------------
 // Recording and extraction fail independently: the poller can be storing payloads

@@ -51,27 +51,47 @@ of recorded history.
 
 ## What is blocked on you
 
-Both blockers are credentials, not code.
+1. ~~**A CoinMarketCap API key.**~~ ✅ In `../config.php`, chmod 600, outside the repo. Verified
+   against the live API on 13 Sep 2026.
+2. **The cPanel host** — SSH access, a MySQL database and user, and the PHP CLI path (8.3).
+   This is now the **only** blocker, and it is the one that matters: nothing is recording.
 
-1. **A CoinMarketCap API key.** Put it in `../config.php` (copy `config.example.php`). Nothing
-   downstream can be verified without it.
-2. **The cPanel host** — SSH access, a MySQL database and user, and the PHP CLI path.
+### And one decision only you can make
+
+The plan is **Basic**, not Startup — 15,000 credits a month, and ten of the seventeen endpoints
+this design was built on answer 403 (D14). The Voice axis is down to the fear and greed index: one
+number, updated **once a day**.
+
+Three honest options, in the order I would take them:
+
+1. **Upgrade the plan.** Startup or above restores trending, community and content — the entire
+   Voice axis as designed. Everything in this repo already works; only `endpoint_access_results()`
+   in `lib/endpoints.php` needs re-running.
+2. **Rebuild Voice on what is reachable** and say plainly on the method page that it has daily
+   resolution. The quadrant still works; the trail moves once a day on one axis and continuously on
+   the other, which is a defensible measurement but a much weaker demo.
+3. **Rebuild Voice from `/v3/fear-and-greed/historical`** — 500 daily points back to May 2025 — and
+   lean the product on depth of history rather than resolution. This is the only input that can be
+   backfilled at all, and it is free.
+
+Nothing downstream of Voice should be built until this is decided.
 
 ## Day 1 — get something recording
 
-### 1. Verify the API with the real key ~20 min
+### 1. Verify the API with the real key — ✅ done 13 Sep 2026
 
 ```bash
-php bin/verify-endpoints.php --save-fixtures
+php bin/verify-endpoints.php --save-fixtures     # 6 credits
 ```
 
-- [ ] Run it **on the host**, so it doubles as proof the host can reach the API (open question 5)
-- [ ] Paste the generated tables into `docs/endpoint-access.md`, replacing the ❓ column
-- [ ] **Read two payloads before anything else.** Both could partly reverse D10:
-      does `global_metrics` carry `derivatives_volume_24h`, and does
-      `market-pairs/latest?category=derivatives` carry open interest?
-- [ ] `--save-fixtures` writes the real payloads to `tests/fixtures/live/`, which is what the
-      extraction layer gets built against without spending credits
+- [x] Results written into `docs/endpoint-access.md` and encoded in `endpoint_access_results()`
+- [x] `global_metrics` **does** carry `derivatives_volume_24h` — D10 amended
+- [x] `market-pairs/latest` is 403, so open interest stays unanswerable on this plan
+- [x] Live payloads saved to `tests/fixtures/live/`; `tests/live_test.php` runs the extractor
+      against them and caught one real bug — the historical fear-and-greed list is newest-first,
+      and the extractor had been taking the oldest point
+- [ ] **Still to do on the host:** re-run it over SSH, which is what actually closes open
+      question 5 — a laptop reaching the API proves nothing about cPanel
 
 ### 2. Confirm the host can do this ~15 min
 

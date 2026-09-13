@@ -163,11 +163,41 @@ function extract_global_metrics(mixed $data): array
     $push('total_market_cap', $quote['total_market_cap'] ?? null);
     $push('total_volume_24h', $quote['total_volume_24h'] ?? null);
     $push('stablecoin_volume_24h', $quote['stablecoin_volume_24h'] ?? null);
-    $push('derivatives_volume_24h', $quote['derivative_volume_24h'] ?? $quote['derivatives_volume_24h'] ?? null);
     $push('altcoin_volume_24h', $quote['altcoin_volume_24h'] ?? null);
     $push('btc_dominance', $data['btc_dominance'] ?? null);
     $push('eth_dominance', $data['eth_dominance'] ?? null);
     $push('active_cryptocurrencies', $data['active_cryptocurrencies'] ?? null);
+
+    // Confirmed present and callable on 13 Sep 2026 — the single positioning-shaped
+    // number reachable on this API, and the reason D10 is amended rather than final.
+    // Both spellings are accepted because only one has been seen.
+    $push('derivatives_volume_24h', $quote['derivatives_volume_24h'] ?? $quote['derivative_volume_24h'] ?? null);
+    $push('derivatives_24h_change', $quote['derivatives_24h_percentage_change'] ?? $data['derivatives_24h_percentage_change'] ?? null);
+
+    // Reported volume is what exchanges claim; total_volume_24h is CMC's adjusted
+    // figure. On 13 Sep 2026 reported was 5.1x adjusted. The ratio is a measurement of
+    // how much of the day's stated activity survives CMC's own filtering — which is a
+    // Money-axis question, and one CMC does not put on a chart anywhere.
+    $reported = $quote['total_volume_24h_reported'] ?? null;
+    $push('total_volume_24h_reported', $reported);
+    if (is_numeric($reported) && is_numeric($quote['total_volume_24h'] ?? null) && (float) $quote['total_volume_24h'] > 0) {
+        $push('reported_volume_ratio', (float) $reported / (float) $quote['total_volume_24h']);
+    }
+
+    // The only inputs in the product that carry their own history. Everything else
+    // needs recording; these arrive pre-differenced, which is what makes the charts
+    // non-empty on day one rather than after a week of banked samples.
+    $push('total_volume_24h_change', $quote['total_volume_24h_yesterday_percentage_change'] ?? null);
+    $push('total_market_cap_change', $quote['total_market_cap_yesterday_percentage_change'] ?? null);
+    $push('btc_dominance_change', $data['btc_dominance_24h_percentage_change'] ?? null);
+    $push('stablecoin_24h_change', $quote['stablecoin_24h_percentage_change'] ?? null);
+
+    $push('defi_volume_24h', $quote['defi_volume_24h'] ?? null);
+    $push('defi_market_cap', $quote['defi_market_cap'] ?? null);
+    $push('stablecoin_market_cap', $quote['stablecoin_market_cap'] ?? null);
+    $push('altcoin_market_cap', $quote['altcoin_market_cap'] ?? null);
+    $push('active_exchanges', $data['active_exchanges'] ?? null);
+    $push('active_market_pairs', $data['active_market_pairs'] ?? null);
 
     $cap = $quote['total_market_cap'] ?? null;
     $vol = $quote['total_volume_24h'] ?? null;
@@ -229,13 +259,38 @@ function extract_exchange_listings(mixed $data): array
 // Voice — market-wide
 // ---------------------------------------------------------------------------
 
-/** The one Voice input with real history behind it (open question 3). */
+/**
+ * The one Voice input with real history behind it (open question 3) — and, since the
+ * plan check on 13 Sep 2026, very nearly the only Voice input there is at all.
+ *
+ * /v3/fear-and-greed/latest returns an object; /historical returns a list, and that
+ * list arrives **newest first**. An earlier version of this function took the last
+ * element, which on the real payload is the *oldest* point — sixteen months stale and
+ * entirely plausible-looking on a chart. So the most recent entry is now chosen by
+ * comparing timestamps rather than by trusting the order.
+ */
 function extract_fear_and_greed(mixed $data): array
 {
-    // /v3/fear-and-greed/latest returns an object; /historical returns a list. The
-    // historical one is fetched once, by hand, so take the most recent entry from it
-    // and leave the rest of the series to the backfill that stores it.
-    $point = isset($data['value']) ? $data : (is_array($data) ? (end($data) ?: null) : null);
+    if (!is_array($data)) {
+        return ['status' => 'skipped', 'note' => 'fear-and-greed payload is neither an object nor a list'];
+    }
+
+    $point = null;
+    if (isset($data['value'])) {
+        $point = $data;
+    } else {
+        $newest = null;
+        foreach ($data as $entry) {
+            if (!is_array($entry) || !is_numeric($entry['value'] ?? null)) {
+                continue;
+            }
+            $at = (int) ($entry['timestamp'] ?? 0);
+            if ($newest === null || $at > $newest) {
+                $newest = $at;
+                $point = $entry;
+            }
+        }
+    }
 
     if (!is_array($point) || !is_numeric($point['value'] ?? null)) {
         return ['status' => 'skipped', 'note' => 'no numeric value in the fear-and-greed payload'];
@@ -390,7 +445,7 @@ function extract_quotes_latest(mixed $data): array
     $count = 0;
     foreach ($data as $entry) {
         // v2 returns a list per id when the same symbol maps to several assets.
-        foreach (is_array($entry) && is_json_list($entry) ? $entry : [$entry] as $item) {
+        foreach (is_array($entry) && array_is_list($entry) ? $entry : [$entry] as $item) {
             if (!is_array($item) || !is_numeric($item['id'] ?? null)) {
                 continue;
             }
@@ -407,21 +462,6 @@ function extract_quotes_latest(mixed $data): array
         'asset'  => $asset,
         'market' => [['metric' => 'quotes_asset_count', 'value' => (float) $count]],
     ];
-}
-
-/**
- * array_is_list() is PHP 8.1 and the host floor is 8.0, so this asks the same question
- * the long way: a decoded JSON array is a list when its keys are 0..n-1.
- */
-function is_json_list(array $value): bool
-{
-    $i = 0;
-    foreach ($value as $key => $_) {
-        if ($key !== $i++) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /**

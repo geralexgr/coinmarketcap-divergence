@@ -88,10 +88,20 @@ reports without writing.
 cPanel → Cron Jobs. Three entries.
 
 ```
-*/5  * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
-*/15 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
-*/10 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
+*/30 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
 ```
+
+**The cadence is set by the credit budget, not by preference.** The Basic plan allows 15,000
+credits a month (D14). A market run costs 4 credits and an asset run 1, so 10-minute/30-minute
+sampling costs about 624 a day — roughly 11,100 for the cycle, a quarter of the budget spare. The
+originally documented 5-minute/15-minute cadence costs ~1,250 a day and runs the budget dry in
+twelve days, mid-hackathon. Do not raise it without redoing that arithmetic; `bin/health.php`
+prints the remaining headroom in days on every run.
+
+The extractor's entry is offset (`7,27,47`) rather than `*/20` so it never lands on the same minute
+as either poller tick.
 
 The extractor is separate from the poller on purpose. It costs no credits and touches no network,
 so a slow or failing extraction must never be able to delay a fetch — the fetch is the part that
@@ -125,10 +135,11 @@ Two consecutive runs landing, with no unexpected statuses, is the day-1 mileston
 
 ## 7. Ongoing checks
 
-- `bin/health.php` — per-endpoint success rate, cadence, longest gap, credits against the 300,000
+- `bin/health.php` — per-endpoint success rate, cadence, longest gap, extraction lag, credits
+  against the real limit reported by `/v1/key/info`, and the
   budget. Exits non-zero when nothing has landed recently, so it also works as a watchdog:
   `*/30 * * * * /usr/local/bin/php /home/USER/divergence/bin/health.php --stale=1800 || mail ...`
-- Credit consumption against the 300,000/month budget, from `fetch_log`
+- Credit consumption against the 15,000/month budget, from `fetch_log`
 - Log size; rotate if the host does not
 
 ## Rollback

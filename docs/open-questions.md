@@ -8,21 +8,11 @@ Status as of 12 September 2026: questions 2 and 3 answered, the rest open.
 
 ---
 
-## 1. Which endpoints respond on Startup tier — ❓ open · now the highest priority
+## 1. Which endpoints the plan permits — ✅ answered 13 September 2026, badly
 
-The plan gives 23 latest-data endpoints against Standard's 35. 26 paths are confirmed to **exist**
-(`endpoint-access.md`); which of them our plan may actually **call** is untested, because it needs
-the real key.
-
-**How to settle it:** `php bin/verify-endpoints.php` from the host. It calls each surviving path
-once, classifies the outcome, and writes the tables to paste back into `endpoint-access.md`. About
-20 credits.
-
-**What it changes:** the input list for both axes. Two payloads to read first, before anything
-else, because both could partly undo D10:
-
-1. `global_metrics` — does it carry `derivatives_volume_24h`?
-2. `market-pairs/latest?category=derivatives` — does it carry open interest?
+Moved to the answered section below, because the answer changed the product rather than confirming
+it. **The key is on Basic, not Startup: 15,000 credits a month and 7 of 17 endpoints callable.**
+See the answered section, `endpoint-access.md`, and decisions D14 and D15.
 
 ---
 
@@ -77,6 +67,27 @@ once there is data to look at.
 ---
 
 ## Answered
+
+### 1. Which endpoints the plan permits — ✅ answered 13 September 2026
+
+`php bin/verify-endpoints.php --save-fixtures`, 17 calls, 6 credits.
+
+**Basic plan: `credit_limit_monthly: 15000`, `rate_limit_minute: 50`.** Not the Startup tier this
+repo assumed, and not the 300,000 credits every planning document was written against.
+
+Callable (7): `key_info`, `global_metrics`, `listings_latest`, `fear_and_greed`,
+`fear_and_greed_historical`, `quotes_latest`, `exchange_assets`.
+
+Forbidden with HTTP 403 (10): all five trending/community endpoints, both content endpoints,
+`exchange_listings`, `market_pairs_derivatives`, `price_performance`.
+
+**What it changed:** the Voice axis lost six of its seven inputs and is down to a daily index. The
+Money axis gained `derivatives_volume_24h` from `global_metrics`, which partly reverses D10. The
+cadence dropped to 10/30 minutes because the old one exhausted the real budget in twelve days. All
+three are written up in D14 and D15.
+
+**What it left open:** whether the Voice axis survives as an axis, or is rebuilt on what is
+reachable with the resolution stated plainly. That is a product decision, not a measurement.
 
 ### 2. Derivatives access — ✅ answered 12 September 2026: there is none
 

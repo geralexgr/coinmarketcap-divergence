@@ -7,9 +7,14 @@ volume and exchange flow on another — and never puts them on the same axis. Th
 
 Built for the CoinMarketCap API Hackathon (submissions close early October 2026).
 
-> **Status: recording and extraction layers built, not yet deployed.** The schema, the poller, the
-> extractor, the endpoint verifier and the health check exist and are tested end-to-end against a
-> real MySQL. Nothing is recording yet, because that needs an API key and the host. Start at
+> **Status: recording and extraction layers built and verified against the live API, not yet
+> deployed.** The schema, the poller, the extractor, the endpoint verifier and the health check
+> exist, are tested end-to-end against a real MySQL, and the extractor is tested against real
+> CoinMarketCap payloads. Nothing is recording yet, because that needs the host.
+>
+> **The plan is Basic: 15,000 credits/month, and ten of the seventeen endpoints this design wanted
+> answer 403** — including every social and trending endpoint the Voice axis was built on. See
+> [D14](docs/decisions.md) and [docs/endpoint-access.md](docs/endpoint-access.md). Start at
 > [TOMORROW.md](TOMORROW.md).
 
 ---
@@ -214,9 +219,9 @@ before committing to storing it.
 Then the cron entries, which are the point of all of the above:
 
 ```
-*/5  * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
-*/15 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
-*/10 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
+*/30 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
 ```
 
 The poller takes a per-scope lock, so a slow run makes the next tick skip rather than pile up
@@ -294,7 +299,8 @@ Full spec: [`docs/method.md`](docs/method.md).
 ## Constraints worth remembering
 
 - **30 requests/minute.** Per-asset polling needs batching. Cap the universe at the top ~100.
-- **300,000 call credits/month.** Generous, but log credits per call from the response so usage is
+- **15,000 call credits/month** — the Basic plan, measured rather than assumed (D14). This is the
+  binding constraint on the entire product and it sets the cadence (D15). Log credits per call from the response so usage is
   observable rather than guessed.
 - **Cadence:** 5 minutes market-wide, 15 minutes per asset. Roughly 6k market rows and 600k asset
   rows over three weeks — about 100 MB with indexes.

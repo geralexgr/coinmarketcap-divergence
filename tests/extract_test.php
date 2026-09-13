@@ -145,16 +145,17 @@ test('fear and greed reads the latest object', function (): void {
     assert_close(63.0, $m['fear_greed'], 'the index value is the metric');
 });
 
-test('fear and greed reads the most recent point of a historical list', function (): void {
-    $payload = json_encode([
-        'status' => ['error_code' => 0],
-        'data'   => [
-            ['value' => 20, 'timestamp' => '1757000000'],
-            ['value' => 71, 'timestamp' => '1757600000'],
-        ],
-    ]);
-    $m = market_metrics(extract_sample('fear_and_greed', (string) $payload));
-    assert_close(71.0, $m['fear_greed'], 'the last entry is the most recent one');
+test('fear and greed picks the newest point by timestamp, in either order', function (): void {
+    // The real /historical payload arrives NEWEST FIRST. Taking the last element — as
+    // this did until the live payload was seen on 13 Sep 2026 — returns a point sixteen
+    // months stale, which plots perfectly plausibly and is completely wrong. So both
+    // orderings have to give the same answer.
+    $ascending = [['value' => 20, 'timestamp' => '1757000000'], ['value' => 71, 'timestamp' => '1757600000']];
+    foreach ([$ascending, array_reverse($ascending)] as $series) {
+        $payload = json_encode(['status' => ['error_code' => 0], 'data' => $series]);
+        $m = market_metrics(extract_sample('fear_and_greed', (string) $payload));
+        assert_close(71.0, $m['fear_greed'], 'the newest timestamp wins regardless of list order');
+    }
 });
 
 test('content feed gives post volume and engagement per post', function (): void {

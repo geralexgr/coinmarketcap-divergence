@@ -10,9 +10,53 @@
  *
  * The derivatives block that this design originally assumed is gone: 38 candidate
  * paths, every one absent. See docs/decisions.md D10.
+ *
+ * 'access' records what bin/verify-endpoints.php measured with a real key on 13 Sep 2026.
+ * It is the answer to open question 1, and it is worse than hoped: this key is on the
+ * Basic plan, which forbids every trending and community endpoint. See D14.
  */
 
 declare(strict_types=1);
+
+/**
+ * What the plan permits, measured — not read off the pricing page.
+ *
+ * Run: `php bin/verify-endpoints.php` on 13 September 2026, key ending 3c96.
+ * 'ok' = HTTP 200 with a data block. 'forbidden' = HTTP 403, the path exists and this
+ * plan may not call it. A plan upgrade would change these; nothing in this repo will.
+ *
+ * This gates polling directly (see endpoints_to_poll), so a forbidden endpoint cannot
+ * be scheduled by accident. Every 403 is a wasted round trip on a 15,000 credit budget
+ * and a line of noise in fetch_log that hides real failures.
+ *
+ * @return array<string,string>
+ */
+function endpoint_access_results(): array
+{
+    return [
+        'key_info'                 => 'ok',
+        'global_metrics'           => 'ok',
+        'listings_latest'          => 'ok',
+        'fear_and_greed'           => 'ok',
+        'fear_and_greed_historical' => 'ok',
+        'quotes_latest'            => 'ok',
+        'exchange_assets'          => 'ok',
+
+        // The entire Voice axis except fear and greed.
+        'community_trending_topic' => 'forbidden',
+        'community_trending_token' => 'forbidden',
+        'trending_most_visited'    => 'forbidden',
+        'trending_latest'          => 'forbidden',
+        'trending_gainers_losers'  => 'forbidden',
+        'content_latest'           => 'forbidden',
+        'content_posts_top'        => 'forbidden',
+
+        // And three of the five Money candidates.
+        'exchange_listings'        => 'forbidden',
+        'market_pairs_derivatives' => 'forbidden',
+        'price_performance'        => 'forbidden',
+    ];
+}
 
 /**
  * @return array<int, array{
@@ -36,7 +80,7 @@ function endpoint_catalogue(): array
         return compact('key', 'path', 'axis', 'need', 'query', 'poll', 'scope', 'exists', 'note');
     };
 
-    return [
+    $catalogue = [
         // -------------------------------------------------------------------
         // Support — needed whichever inputs survive.
         // -------------------------------------------------------------------
@@ -115,8 +159,10 @@ function endpoint_catalogue(): array
             'Concentration across exchanges: whether flow is broad or sitting in one venue.'),
 
         $e('exchange_assets', '/v1/exchange/assets', 'money',
-            'exchange wallet balances, for reserve movement', ['id' => 270], false, 'market', 'yes',
-            'Reserve movement. id 270 = Binance. One call per exchange, so a short list only.'),
+            'exchange wallet balances, for reserve movement', ['id' => 270], true, 'market', 'yes',
+            'Reserve movement. id 270 = Binance. One call per exchange, so a short list only. '
+            . 'Promoted to polled on 13 Sep 2026: exchange_listings is forbidden on this plan, '
+            . 'so this is the only surviving view of where money sits rather than moves.'),
 
         $e('market_pairs_derivatives', '/v2/cryptocurrency/market-pairs/latest', 'money',
             'derivative pair volume for one asset',
@@ -145,6 +191,15 @@ function endpoint_catalogue(): array
         $e('derivatives_liquidations', '/v1/derivatives/liquidations/latest', 'absent',
             '24h liquidation total', [], false, 'market', 'no', 'Absent at every version.'),
     ];
+
+    // Annotated rather than hard-coded per entry, so the measurement and its date live
+    // in one place and cannot drift out of step with the catalogue.
+    $access = endpoint_access_results();
+    foreach ($catalogue as $i => $entry) {
+        $catalogue[$i]['access'] = $access[$entry['key']] ?? ($entry['exists'] === 'no' ? 'absent' : 'unknown');
+    }
+
+    return $catalogue;
 }
 
 /**
@@ -158,6 +213,12 @@ function endpoints_to_poll(array $config, string $scope): array
     $selected = [];
     foreach (endpoint_catalogue() as $entry) {
         if ($entry['scope'] !== $scope || $entry['axis'] === 'absent') {
+            continue;
+        }
+        // Measured plan access overrides intent, including an explicit config override.
+        // A 403 costs a round trip, returns nothing, and buries real failures in
+        // fetch_log. If the plan changes, endpoint_access_results() changes with it.
+        if ($entry['access'] === 'forbidden') {
             continue;
         }
         $wanted = is_array($override)

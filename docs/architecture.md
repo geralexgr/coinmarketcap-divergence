@@ -79,7 +79,8 @@ on shared hosting.
 
 - **30 requests/minute.** A per-asset run must batch: one call covering many assets wherever the
   endpoint supports a comma-separated id list, and a hard cap of 100 assets in the universe.
-- **300,000 credits/month.** Credits per call come back in the response; they are logged rather
+- **15,000 credits/month** — the Basic plan, measured 13 Sep 2026 (D14), not the 300,000 originally
+  assumed. Credits per call come back in the response; they are logged rather
   than estimated, so usage is observable.
 - Both limits are enforced in `lib/http.php`, not in each fetcher.
 
