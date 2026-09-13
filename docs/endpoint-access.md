@@ -21,7 +21,7 @@ and D15.
 Two headline consequences:
 
 - **The Voice axis lost six of its seven inputs.** What is left is the fear and greed index: one
-  number, updated **once a day**. An axis sampled every ten minutes off a daily number has daily
+  number, updated **once a day**. An axis sampled every fifteen minutes off a daily number has daily
   resolution, and `docs/method.md` must say so rather than implying otherwise.
 - **The Money axis got a positioning number back.** `global_metrics` carries
   `derivatives_volume_24h` — $308bn against $41bn of adjusted spot volume on 13 Sep 2026 — plus

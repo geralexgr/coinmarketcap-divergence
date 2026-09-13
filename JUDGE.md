@@ -56,7 +56,7 @@ actually used, and the app prints that.
 ## 3. Check that it is really recording (30 seconds)
 
 The header says `recording since 13 Sep, N samples`. That is a live count from `raw_samples`, not a
-written-down figure. Reload in ten minutes and it will be larger.
+written-down figure. Reload in fifteen minutes and it will be larger.
 
 The trail on the quadrant is the part that matters: **CoinMarketCap has no historical endpoint for
 sentiment or positioning.** Price history can be fetched retroactively; this cannot. Every point on

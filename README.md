@@ -15,6 +15,83 @@ Built for the CoinMarketCap API Hackathon.
 `JUDGE.md` shows how to verify any number on the site against CoinMarketCap directly, how to run the
 tests with no API key, and — at the end — where we think this is weakest, in our own words.
 
+<details>
+<summary><b>Contents</b></summary>
+
+- [The problem](#the-problem) — why this exists, and why nobody can build it retroactively
+- [What is unusual about this entry](#what-is-unusual-about-this-entry)
+- [The screen](#the-screen) — market view, screener, method page
+- [What it measures](#what-it-measures) — the two scores and the four readings
+- [What this is not](#read-this-first-what-this-is-not) — no advice, no predictions, and why
+- [What the API plan costs the method](#read-this-second-what-the-api-plan-costs-the-method)
+- [How it works](#how-it-works) — the pipeline, and why the recorder came first
+- [Running it](#running-it) — setup, tests, the MCP server
+- [CoinMarketCap endpoints used](#coinmarketcap-endpoints-used) — with a real request and response
+- [Method](#method) — how a score is produced
+- [Repo layout](#repo-layout) · [Constraints](#constraints)
+
+</details>
+
+---
+
+## The problem
+
+CoinMarketCap can tell you two things about the market, on two different pages.
+
+**What people are feeling.** The fear and greed index, trending searches, community posts.
+
+**What money is actually doing.** Volume, open interest, funding rates, liquidations.
+
+It never puts them on the same axis — and the interesting question is not either one on its own. It
+is *whether they agree*.
+
+A market where everyone is greedy **and** leverage is piling in is a different market from one where
+everyone is greedy and nobody has actually bought anything. Both show "Greed" on the index. Both
+might show rising volume. They are not the same market, and nothing on CoinMarketCap distinguishes
+them, because the two halves are never plotted against each other.
+
+### Why nobody can just build this later
+
+Price history can be fetched retroactively, forever. **Sentiment and positioning history cannot.**
+
+There is no CoinMarketCap endpoint that answers "what was the fear and greed index, and what was
+open interest, at 3pm last Tuesday". Those endpoints return *now*, and only now. So the gap between
+the two can be measured today, but its history can only exist if something was writing it down at
+the time.
+
+That is why this project is a recorder first and a website second. The poller shipped before a
+single line of frontend, and every hour it runs is an hour of history that nobody starting later can
+reconstruct.
+
+### What it does about it
+
+1. **Records** both halves continuously — verbatim API responses, with the real fetch time.
+2. **Normalises** them onto one 0–100 scale so they can be compared at all.
+3. **Plots** them on a single chart, with the path the market took between readings.
+4. **Repeats it per asset**, which turns the same idea into a screener.
+
+### What a reading actually tells you
+
+The live site at the time of writing:
+
+> **Voice 66 · Money 39 · Divergence −27 — "Chatter without conviction"**
+
+Read that as: the fear and greed index is well into greed, but open interest, funding and
+liquidations are all subdued. People are *talking* like it is a bull market and *positioning* like
+it is not. That is a fact about right now, checkable against CoinMarketCap in about a minute — and
+it is not a number you can read off any single page there.
+
+Flip it and you get the reading the tool was built to find: **low Voice, high Money** — nobody is
+paying attention while leverage quietly builds.
+
+### Who it is for
+
+Anyone who already watches this market and wants one number for a question they currently answer by
+eye across several tabs: *is the noise backed by money, or not?*
+
+It is a **measuring instrument, not an advisor**. It will never tell you what to do about a reading
+— see below for why that is a design constraint rather than caution.
+
 ---
 
 ## What is unusual about this entry
@@ -82,10 +159,25 @@ Two scores, both normalised 0–100, both sampled continuously.
 
 Four readings, from where the point sits:
 
-| | Money &lt; 50 | Money ≥ 50 |
-|---|---|---|
-| **Voice ≥ 50** | Chatter without conviction | Loud and leveraged |
-| **Voice &lt; 50** | Apathy | Quiet, but leveraged |
+```mermaid
+quadrantChart
+    title Where the market sits
+    x-axis "Low Money committed" --> "High Money committed"
+    y-axis "Low Voice" --> "High Voice"
+    quadrant-1 "Loud and leveraged"
+    quadrant-2 "Chatter without conviction"
+    quadrant-3 "Apathy"
+    quadrant-4 "Quiet, but leveraged"
+```
+
+| Reading | Voice | Money | What it describes |
+|---|---|---|---|
+| **Chatter without conviction** | ≥ 50 | &lt; 50 | People are talking; money has not followed |
+| **Loud and leveraged** | ≥ 50 | ≥ 50 | Attention and positioning agree |
+| **Apathy** | &lt; 50 | &lt; 50 | Neither the crowd nor the money is engaged |
+| **Quiet, but leveraged** | &lt; 50 | ≥ 50 | Leverage building while nobody is watching |
+
+A quadrant is a label for where a point sits. It is not a rating, and it implies no action.
 
 The same two scores are computed **per asset**, which turns the tool into a screener with axes that
 exist nowhere on CoinMarketCap's own site: sort the market by how much an asset is being looked at
@@ -112,14 +204,15 @@ Two reasons this is a hard constraint rather than a disclaimer:
 
 ## Read this second: what the API plan costs the method
 
-The key behind this deployment is on CoinMarketCap's **Basic** plan. Measured against the live API
-rather than read off a pricing page: **10 of the 20 endpoints in the catalogue are callable, and 10
-answer HTTP 403.** Every one of those twenty was re-checked against the live API on 13 September and
+The key behind this deployment reports **15,000 credits a month and 50 requests a minute**, and
+`/v1/key/info` returns no tier name — so this repo does not assert one. What it asserts is what was
+measured, call by call: **10 of the 20 endpoints in the catalogue are callable, and 10 answer HTTP
+403.** Every one of those twenty was re-checked against the live API on 13 September and
 the table below reflects what came back, not what the documentation promises.
 
 The Voice axis takes the damage. Trending, most-visited, community and content are all forbidden,
 leaving the fear and greed index — one input, updated **once a day**. So Voice steps daily while
-Money moves every ten minutes.
+Money moves every fifteen minutes.
 
 This is stated on the market screen, on the method page, and here, because a tool that showed a flat
 Voice line without explaining it would be misrepresenting the market rather than the plan. The
@@ -141,26 +234,43 @@ after can be compared rather than silently swapped.
 
 ## How it works
 
-```
-cPanel cron ──► poller/run.php ──► CoinMarketCap API
-                     │
-                     ▼
-                  MySQL
-   ├── raw_samples      verbatim JSON + real fetch time   ← source of truth
-   ├── fetch_log        every attempt, success or failure
-   ├── market_metric    extracted fields, recomputable
-   ├── asset_metric     the same per asset
-   └── scores           Voice / Money / Divergence
-                     │
-       ┌─────────────┼──────────────┐
-       ▼             ▼              ▼
-   public/        mcp/         api/*.php
-   web app     MCP server      JSON, read-only
+```mermaid
+flowchart TB
+    CMC["CoinMarketCap API<br/><i>10 callable endpoints</i>"]
+
+    POLL["<b>poller</b> · every 15 min<br/><i>costs credits · cannot be caught up later</i>"]
+    RAW[("<b>raw_samples</b><br/>verbatim JSON + real fetch time")]
+    LOG[("fetch_log<br/><i>every attempt, success or failure</i>")]
+
+    EXT["<b>extractor</b><br/><i>free · re-runnable over all history</i>"]
+    MET[("market_metric · asset_metric")]
+
+    SCO["<b>scorer</b><br/><i>free · rebuildable from raw</i>"]
+    SC[("scores<br/>Voice · Money · Divergence")]
+
+    OUT["web app · JSON API · MCP server<br/><i>read-only</i>"]
+
+    CMC --> POLL
+    POLL --> RAW
+    POLL -.-> LOG
+    RAW --> EXT --> MET --> SCO --> SC --> OUT
+
+    style RAW fill:#F7E9E4,stroke:#A34428,stroke-width:2px
+    style CMC fill:#EEF1F0,stroke:#6B7780
+    style OUT fill:#EEF1F0,stroke:#6B7780
 ```
 
-Three cron entries, three separable jobs: **fetch** (costs credits, cannot be caught up on later),
-**extract** (no credits, no network, re-runnable over all history), **score** (no credits, rebuilt
-from scratch whenever a weight changes).
+**`raw_samples` is the only irreplaceable box.** Everything downstream of it is a cache of an
+interpretation and can be rebuilt at any time — that is why the arrows only ever flow one way out of
+it.
+
+Three separable jobs, on their own cron entries and offset minutes:
+
+| Job | Costs credits | Can be caught up later | Why separate |
+|---|---|---|---|
+| **fetch** | yes | **no** | the only irreversible step; nothing may delay it |
+| **extract** | no | yes | bump `EXTRACTOR_VERSION`, re-read every payload ever stored |
+| **score** | no | yes | change a weight, `--rebuild`, whole history rescored |
 
 Detail: [`docs/architecture.md`](docs/architecture.md) · Tables: [`docs/data-model.md`](docs/data-model.md)
 
@@ -375,7 +485,7 @@ root.
 ## Constraints
 
 - **50 requests/minute**, measured. Per-asset polling is batched: 100 assets is one call.
-- **15,000 credits/month** on the Basic plan, measured rather than assumed. This is the binding
+- **15,000 credits/month**, reported by `/v1/key/info` rather than assumed. This is the binding
   constraint on the whole product. Credits are read from each response and logged, not estimated.
 - **Per-endpoint cadence**, because one interval for everything wasted most of the budget: the
   once-a-day fear and greed index was being fetched every tick for an identical value while the

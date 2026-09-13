@@ -7,8 +7,9 @@ The only component that writes source data. Runs from cron via PHP CLI, never ov
 `run.php` — the whole recorder, one file.
 
 ```bash
-php app/poller/run.php --market          # every 10 minutes, via cron
-php app/poller/run.php --assets          # every 30 minutes, via cron
+php app/poller/run.php --market          # every 5-15 minutes, via cron
+php app/poller/run.php --assets          # the same; the catalogue decides what is due
+php app/poller/run.php --market --force  # ignore the cadence and fetch everything
 php app/poller/run.php --once            # market scope, verbose, for a human
 php app/poller/run.php --once --dry-run  # fetch and report, write nothing
 ```

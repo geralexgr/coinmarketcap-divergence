@@ -83,7 +83,7 @@ approximately. No tool takes a write action. See `mcp-tools.md`.
 | Extract | 20 min, offset | 0 | reads stored payloads only |
 | Score | 30 min, offset | 0 | reads typed rows only |
 
-About 624 credits a day against a 15,000/month budget. Roughly 2,500 market rows and 250,000 asset
+About 404 credits a day against a 15,000/month budget. Roughly 2,500 market rows and 250,000 asset
 rows over three weeks — 100–150 MB with indexes.
 
 **The cadence is set by the budget, not by preference** (D15). The 5/15-minute cadence this repo was
