@@ -16,7 +16,7 @@ from it. There is one description of the method and the code is it.
 Two properties that matter more than the weights:
 
 1. **Missing inputs are dropped, not zeroed**, and the surviving weights renormalise. Ten of the
-   seventeen endpoints this product was designed around are 403 on the Basic plan, so this path runs
+   twenty endpoints in the catalogue are 403 on this key, so this path runs
    on every sample. A zero would read as a measurement of a quiet market; absence is a measurement
    of nothing.
 2. **A plan upgrade needs no code.** Forbidden inputs stay declared at their intended weights and

@@ -9,10 +9,10 @@
  *
  * Two properties matter more than the numbers:
  *
- *  1. **Missing inputs are dropped, not zeroed.** Ten of the seventeen endpoints this
- *     product was designed around answer 403 on the Basic plan (D14). An input with no
- *     data contributes nothing and the surviving weights are renormalised; the score
- *     records how many of the possible inputs it actually saw, and the app prints that.
+ *  1. **Missing inputs are dropped, not zeroed.** Ten of the twenty endpoints in the
+ *     catalogue answer 403 on this key (D14). An input with no data contributes nothing
+ *     and the surviving weights are renormalised; the score records how many of the
+ *     possible inputs it actually saw, and the app prints that.
  *     A zero would read as a measurement of quiet, which is a lie about the market
  *     rather than about the plan.
  *  2. **A plan upgrade needs no code.** The forbidden inputs are declared here in full.

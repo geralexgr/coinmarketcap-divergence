@@ -86,7 +86,7 @@ The credibility screen, and the reason the tool is not a black box.
 Rendered directly from `scoring/inputs.php` — the same declaration the scorer runs from — so the
 page cannot describe a method the code does not implement.
 
-- What the API plan permits, **first**, before the method itself. Ten of seventeen endpoints answer
+- What the API plan permits, **first**, before the method itself. Ten of twenty endpoints answer
   403 and a method page that buried that would be worth less than none.
 - The two axes and every input feeding each, including the forbidden ones, marked unavailable
 - The current weights, ranges and the version number

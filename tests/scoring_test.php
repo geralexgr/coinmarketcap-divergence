@@ -372,6 +372,47 @@ test('availability is read from measured plan access, not restated', function ()
     }
 });
 
+test('every catalogue endpoint has a measured access result', function (): void {
+    // The counts quoted in the README, the method page and scoring/inputs.php are all
+    // derived from this table. Adding an endpoint without measuring it would leave those
+    // numbers quietly wrong — which is exactly what happened when the three /v5/
+    // derivatives endpoints landed and every document still said "seventeen".
+    $access = endpoint_access_results();
+
+    foreach (endpoint_catalogue() as $entry) {
+        if ($entry['axis'] === 'absent') {
+            continue;
+        }
+        assert_true(
+            array_key_exists($entry['key'], $access),
+            "endpoint '{$entry['key']}' is in the catalogue with no measured access result"
+        );
+        assert_true(
+            in_array($access[$entry['key']], ['ok', 'forbidden'], true),
+            "endpoint '{$entry['key']}' has access '{$access[$entry['key']]}', which is neither ok nor forbidden"
+        );
+    }
+
+    // And nothing measured that is not in the catalogue.
+    $keys = array_column(endpoint_catalogue(), 'key');
+    foreach (array_keys($access) as $measured) {
+        assert_true(in_array($measured, $keys, true), "access measured for unknown endpoint '{$measured}'");
+    }
+});
+
+test('the access table matches the counts the docs quote', function (): void {
+    // 10 callable, 10 forbidden, 20 total. If this fails, the numbers in README.md,
+    // JUDGE.md, docs/ui-spec.md, app/scoring/inputs.php and public/method.php are stale
+    // and need updating with it — they are prose and cannot check themselves.
+    $access = endpoint_access_results();
+    $ok = count(array_filter($access, static fn(string $v): bool => $v === 'ok'));
+    $forbidden = count(array_filter($access, static fn(string $v): bool => $v === 'forbidden'));
+
+    assert_same(10, $ok, 'callable endpoints');
+    assert_same(10, $forbidden, 'forbidden endpoints');
+    assert_same(20, count($access), 'endpoints with a measured result');
+});
+
 test('both axes still have at least one callable input on this plan', function (): void {
     // If this fails, the product has no chart. It is the check that would have caught
     // the Basic-plan discovery on day one instead of on day two.

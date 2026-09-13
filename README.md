@@ -25,7 +25,7 @@ tests with no API key, and — at the end — where we think this is weakest, in
 | **The method is data, not prose.** | `app/scoring/inputs.php` declares every input, weight and range. The scorer runs from it and the public method page renders from it, so the page *cannot* describe a method the code does not implement. |
 | **It measures, never predicts.** | No signals, no entry levels, no buy/sell. A measurement can be checked against CoinMarketCap in thirty seconds; a prediction cannot be checked at all. There is a test that greps the generated copy for future-tense words. |
 | **The mistakes are in the repo.** | 21 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
-| **Missing inputs are dropped, not zeroed.** | Ten of seventeen endpoints are 403 on this key. Scores record how many inputs they actually used, and the app prints it. A zero would read as a quiet market; absence is a measurement of nothing. |
+| **Missing inputs are dropped, not zeroed.** | Ten of the twenty endpoints in the catalogue are 403 on this key. Scores record how many inputs they actually used, and the app prints it. A zero would read as a quiet market; absence is a measurement of nothing. |
 
 ---
 
@@ -113,8 +113,9 @@ Two reasons this is a hard constraint rather than a disclaimer:
 ## Read this second: what the API plan costs the method
 
 The key behind this deployment is on CoinMarketCap's **Basic** plan. Measured against the live API
-rather than read off a pricing page: **7 of the 17 endpoints this design was built on are callable,
-and 10 answer HTTP 403.**
+rather than read off a pricing page: **10 of the 20 endpoints in the catalogue are callable, and 10
+answer HTTP 403.** Every one of those twenty was re-checked against the live API on 13 September and
+the table below reflects what came back, not what the documentation promises.
 
 The Voice axis takes the damage. Trending, most-visited, community and content are all forbidden,
 leaving the fear and greed index — one input, updated **once a day**. So Voice steps daily while
@@ -360,7 +361,7 @@ divergence/
 │
 ├── public/                ← the document root, and the ONLY web-served directory
 │
-├── tests/                 70 tests, no framework, no network, no database
+├── tests/                 72 tests, no framework, no network, no database
 └── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
 
