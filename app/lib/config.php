@@ -2,18 +2,29 @@
 /**
  * Config loading.
  *
- * The real config file never lives in the repo and never lives under the webroot.
- * The deploy layout puts it one level above the repo:
+ * The real config file is never committed and never sits under the webroot. Both
+ * supported locations satisfy that, because the webroot is `public/`, not the repo root:
  *
- *     /home/USER/config.php          ← the real one, chmod 600
- *     /home/USER/divergence/         ← this repo
- *         app/lib/config.php         ← this file
- *         public/                    ← the only web-served directory
+ *     /home/USER/
+ *     ├── config.php                 ← option B
+ *     └── site/                      ← the repo
+ *         ├── config.php             ← option A, gitignored
+ *         ├── app/lib/config.php     ← this file
+ *         └── public/                ← the document root. Nothing above it is served.
+ *
+ * Option A keeps the whole deployment in one directory, which is what a cPanel account
+ * with a per-subdomain folder wants: upload one folder, and the config travels with it
+ * while still being unreachable over HTTP. Option B is right when several deployments
+ * share one config, or when the repo directory is replaced wholesale on each update.
  *
  * Search order, first hit wins:
  *   1. $DIVERGENCE_CONFIG            — explicit path, for anything unusual
- *   2. ../config.php                 — one above the repo root, the deploy layout
- *   3. ./config.php                  — repo root, gitignored, for local work only
+ *   2. ../config.php                 — one above the repo root
+ *   3. ./config.php                  — repo root, gitignored
+ *
+ * Whichever is used, `public/bootstrap.php` refuses to serve if the resolved path turns
+ * out to be inside the document root, so a wrong choice fails loudly instead of quietly
+ * publishing the API key.
  */
 
 declare(strict_types=1);

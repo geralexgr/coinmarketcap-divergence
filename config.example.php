@@ -1,8 +1,17 @@
 <?php
 /**
- * Copy to ../config.php — OUTSIDE the webroot — and fill in.
- * Never commit the filled-in version. A key in git history is a direct hit on
- * the code quality score.
+ * Copy this to `config.php` and fill it in. Two valid locations:
+ *
+ *   1. Beside this file, in the repo root — gitignored, and NOT web-reachable
+ *      because the document root is `public/`, one level below it. Simplest for a
+ *      cPanel subdomain: everything lives in one folder.
+ *   2. One directory above the repo root — use this when several deployments share
+ *      a config, or when the repo folder is replaced wholesale on each update.
+ *
+ * Never commit the filled-in version, and never put it inside `public/` — the app
+ * refuses to start if it finds it there.
+ *
+ * chmod 600 once it holds the real key.
  */
 return [
     'cmc_api_key'   => 'YOUR_KEY_HERE',
@@ -14,6 +23,7 @@ return [
     'db_pass'       => '',
 
     // Operational
+    // Set to null to disable file logging (cron still logs via the redirect).
     'log_path'          => '/home/USER/logs/divergence.log',
     'asset_universe'    => 100,   // top N by market cap
     'request_timeout'   => 10,    // seconds; shared hosts kill long runs
