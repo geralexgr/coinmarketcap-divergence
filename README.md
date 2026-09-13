@@ -13,6 +13,9 @@ Built for the CoinMarketCap API Hackathon.
 
 ![Divergence market view](docs/mockups/ui-market-view.png)
 
+*Design mockup. Replace with a screenshot of the running deployment once it has banked a few days of
+history — a picture of the real thing is worth more here than a drawing of it.*
+
 Voice on the vertical axis, Money on the horizontal, each 0–100. The market sits at a point — and
 because the recorder has been running, that point sits at the end of a **trail** showing the path it
 took to get there. That trail is the part of this that cannot be reconstructed from an API call, by

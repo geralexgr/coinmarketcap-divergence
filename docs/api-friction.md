@@ -3,9 +3,17 @@
 The submission asks for this note. It is written from evidence rather than recollection —
 `fetch_log` records every attempt, status, and error, so this file is a summary of queryable facts.
 
-Two entries recorded so far, both from 12 September 2026, both before a single row was polled.
-Fill in as it happens, with dates. Do not save it up for the last day; the details are what make it
-worth reading and they are the first thing to be forgotten.
+Fill it in as it happens, with dates. Do not save it up for the last day; the details are what make
+it worth reading and they are the first thing to be forgotten.
+
+The three entries below are the ones that changed the product rather than merely annoyed us. Once
+the poller has been running, add whatever `fetch_log` turns up:
+
+```sql
+SELECT endpoint, http_status, count(*) n, min(attempted_at), max(attempted_at)
+  FROM fetch_log WHERE http_status <> 200 OR error IS NOT NULL
+ GROUP BY 1, 2 ORDER BY n DESC;
+```
 
 ## Template for an entry
 
@@ -84,3 +92,50 @@ These are anticipated rather than observed. Confirm or delete each one.
 ## Running notes
 
 Append as you go, dated, even when it is small.
+
+---
+
+### 13 September 2026 — two thirds of the product is behind a paywall we did not know we were on
+
+**What we wanted:** the Voice axis. Social volume, trending rank churn and community post counts —
+the half of the product that measures what the market is *saying*, and the half CoinMarketCap does
+not plot against money anywhere on its own site.
+
+**What happened:** the key is on the **Basic** plan, not the Startup tier every planning document in
+this repo had been written against. `/v1/key/info` reports `credit_limit_monthly: 15000` — not
+300,000 — and `rate_limit_minute: 50`.
+
+Of the 17 endpoints this design was built on, **7 are callable and 10 answer HTTP 403**: both
+community trending endpoints, all three cryptocurrency trending endpoints, both content endpoints,
+`exchange/listings/latest`, `market-pairs/latest` and `price-performance-stats/latest`.
+
+The Voice axis lost six of its seven inputs in one afternoon. What remains is the fear and greed
+index, which updates **once a day**.
+
+**Evidence:** `php bin/verify-endpoints.php --save-fixtures` — 17 calls, 6 credits, saved verbatim.
+The measured result is encoded in `endpoint_access_results()` in `lib/endpoints.php` and rendered
+live on the method page, so the gap between the designed product and the running one is visible to
+anyone who opens it rather than buried in this file.
+
+**What we did instead, and what it cost:**
+
+*The Voice axis ships at daily resolution and says so on the chart.* Not upgrading the plan was a
+deliberate choice (D16): a product that needs a paid tier to be demonstrable is one a judge with
+their own Basic key cannot evaluate. The cost is real and visible — Voice steps once a day while
+Money moves every ten minutes, so the trail is mostly horizontal with daily vertical steps. The
+forbidden inputs stay declared in the method at their intended weights and light up with no code
+change if access ever widens.
+
+*The credit budget rewrote the cadence.* 15,000 a month against the planned 5-minute/15-minute
+sampling is about 1,250 credits a day — the budget exhausted in **twelve days**, mid-hackathon, with
+the poller stopping a week before submission. Recalculated to 10 and 30 minutes, 624 a day (D15).
+
+*One thing got better.* `global-metrics` turned out to carry `derivatives_volume_24h`, which partly
+reverses the derivatives finding above: derivative volume against spot volume — 7.4x when measured —
+is the one genuinely positioning-shaped number reachable on this API, and it is now the second
+heaviest input on the Money axis.
+
+**The wider lesson:** the plan was assumed from the documentation for two days of design work before
+anyone called `/v1/key/info`. That call is free, takes one second, and would have reshaped the
+product before it was designed rather than after. It is now the first endpoint in the catalogue and
+the first thing `bin/preflight.php` reports.
