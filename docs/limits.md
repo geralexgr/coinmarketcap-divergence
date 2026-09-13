@@ -80,6 +80,32 @@ Gaps are detected from the data (any interval more than 2.5× the median) rather
 schedule, because the schedule is an intention and the samples are what happened. Every fetch
 attempt, including the failures, is in `fetch_log`.
 
+## The host enforces a 15-minute cron floor
+
+The deployment host runs a `cron-frequency-monitor` that rewrites any schedule it considers too
+frequent. Submitted `*/5`, it became `*/15`, and then `1-59/15` with a per-job offset so the two
+pollers do not start in the same minute:
+
+```
+# [cron-frequency-monitor] ... "*/5 ..." -> "*/15 ..." (fires 12x/hour, tightest gap 5 min
+#                                          (minimum allowed is 15 min))
+```
+
+**This costs the product nothing, because per-endpoint cadence absorbs it.** The poller is a cheap
+tick that decides what is due; with the tick at 15 minutes every endpoint still gets exactly the
+interval it declares — 15 minutes for the leverage inputs, 30 for the universe, 120 for reserves,
+180 for sentiment. 404 credits a day, unchanged.
+
+It would have cost a great deal under the original design, where one interval applied to a whole
+scope and the cron schedule *was* the sampling rate.
+
+**One consequence worth knowing about.** The floor is equal to the shortest endpoint interval, so a
+tick and the endpoint it should fetch come due at the same moment — and the measured age is always
+fractionally under 15 minutes, because `fetched_at` is recorded seconds after a run begins. Without
+slack in the due-check, every one of those would skip and the real cadence would silently halve.
+`POLL_SLACK_MINUTES` in `app/poller/run.php` is what stops that, and it is load-bearing rather than
+cosmetic.
+
 ## The credit budget is the binding constraint
 
 15,000 credits a month on the Basic plan. The cadence — 10 minutes market-wide, 30 per asset — was
@@ -99,6 +125,7 @@ first thing to build if credits get tight. See [D15](decisions.md).
 | Does `global-metrics` carry derivative volume? | Yes | Live payload inspection |
 | Does `market-pairs/latest` carry open interest? | Unanswerable — 403 on this plan | Verifier |
 | Do the per-asset endpoints accept id batches? | Yes, 100 ids in one call | `quotes_asset_count` per sample |
+| What is the host's minimum cron interval? | **15 minutes**, enforced by rewriting the crontab | the host did it to us; see below |
 | Can PHP CLI on the host reach the API? | Yes — HTTP 200 from the cPanel host | `app/bin/preflight.php` over SSH |
 | Which PHP binary does cron need? | `/opt/alt/php83/usr/bin/php`, not the web server's | preflight reports the resolved path |
 

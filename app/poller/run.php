@@ -27,6 +27,14 @@ require __DIR__ . '/../lib/http.php';
 require __DIR__ . '/../lib/db.php';
 require __DIR__ . '/../lib/endpoints.php';
 
+/**
+ * How early an endpoint may fire relative to its declared interval.
+ *
+ * See the note where this is used: with the host's cron floor equal to the shortest
+ * endpoint interval, zero slack halves the real cadence of every 15-minute input.
+ */
+const POLL_SLACK_MINUTES = 2;
+
 $options = getopt('', ['market', 'assets', 'once', 'dry-run', 'verbose', 'quiet', 'force']);
 
 $scope   = array_key_exists('assets', $options) ? 'asset' : 'market';
@@ -112,9 +120,19 @@ if ($pdo !== null && !array_key_exists('force', $options)) {
             continue;
         }
         $ageMinutes = ($now - strtotime($last . ' UTC')) / 60;
-        // A minute of slack, so a run at 14:59:58 does not defer an endpoint that came
-        // due at 15:00:00 to the following tick and halve its real cadence.
-        if ($ageMinutes >= (int) $entry['every_minutes'] - 1) {
+        // Slack, and it is load-bearing rather than cosmetic.
+        //
+        // This host enforces a 15-minute minimum cron interval — it silently rewrites
+        // anything faster — and the shortest endpoint interval is also 15 minutes. So a
+        // tick and the thing it is meant to fetch come due at the same moment, and the
+        // age is always fractionally under the interval: fetched_at is recorded seconds
+        // after the run starts, so the measured gap between two runs is 14m55s, not 15m.
+        //
+        // Without slack every one of those would skip and the real cadence would halve to
+        // 30 minutes. Two minutes rather than one because a slow run — five HTTP calls,
+        // and a shared host that can stall — pushes fetched_at later still and would eat
+        // a one-minute allowance exactly.
+        if ($ageMinutes >= (int) $entry['every_minutes'] - POLL_SLACK_MINUTES) {
             $due[] = $entry;
         } else {
             $waiting[] = sprintf('%s (%dm of %dm)', $entry['key'], (int) $ageMinutes, (int) $entry['every_minutes']);
