@@ -165,6 +165,34 @@ CMC's side shows up as a failed control rather than as silently wrong results.
 
 ---
 
+## D13 — Extraction is pure, single-payload, and versioned
+**Date:** 13 September 2026 · **Status:** settled
+
+`lib/extract.php` turns exactly one stored payload into typed rows. It touches no database, no
+clock and no network, and it never looks at another sample. The writer is `bin/extract.php`; every
+write upserts on a unique key, and `extraction_log` records which payloads have been read at which
+`EXTRACTOR_VERSION`.
+
+**Why single-payload:** a rebuild has to be order-independent. The moment extraction can see the
+previous sample, re-running it over history in a different order produces different numbers, and
+D3 — that every derived figure is recomputable from what was stored — stops being true. So the
+three cross-sample inputs the product needs (trending churn, exchange reserve *movement*, and every
+percentile) belong to the scoring layer, which is allowed to see a series.
+
+**Why versioned rather than a backfill script:** "we parsed it wrong" is the expected case, not the
+exception, because the extractor was written against documented shapes before a key existed. Bump
+the constant, run `--rebuild`, and all of history is re-derived from payloads already on disk. A
+separate backfill script would be a second code path that has to stay in step with the first.
+
+**Why nothing is defaulted to zero:** a missing field stored as `0` plots as a real reading. A
+missing field stored as nothing plots as a gap. On a tool whose entire claim is that it measures
+rather than predicts, that distinction is the product.
+
+**Revisit if:** an input turns out to be unusable without its neighbours — in which case it becomes
+a scoring-layer input, not an extraction-layer one.
+
+---
+
 ## Pending decisions
 
 These are waiting on `open-questions.md` and must be recorded here once settled:

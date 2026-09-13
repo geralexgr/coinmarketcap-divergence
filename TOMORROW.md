@@ -6,10 +6,15 @@ Written 12 September 2026. This is the file to open first. It assumes you have r
 market says and what it has committed money to, for the CoinMarketCap API Hackathon, submissions
 closing early October 2026.
 
-**Where it stands.** The recording layer is built and tested end-to-end against a real MySQL: the
-schema, the poller, an endpoint verifier, a host preflight check and a health check. Two open
-questions are answered by measurement. **Nothing is recording yet**, because that needs the API key
-and the host, and neither has been touched.
+**Where it stands.** The recording layer *and* the extraction layer are built and tested end-to-end
+against a real MySQL: the schema, the poller, the extractor, an endpoint verifier, a host preflight
+check and a health check. Two open questions are answered by measurement. **Nothing is recording
+yet**, because that needs the API key and the host, and neither has been touched.
+
+Day 2 was pulled forward because it needed neither. It is done against synthetic fixtures written
+from the documented response shapes, which means the extractor is the right shape but is not yet
+proof the real payloads match. Confirming that is step 1 below, and it is now nearly free: point the
+tests at the saved live payloads and run them.
 
 **The one thing that matters today:** the poller must be recording. CoinMarketCap does not serve
 historical sentiment or positioning data. Every hour the poller is not running is an hour of history
@@ -32,6 +37,17 @@ of recorded history.
 - [x] **Open question 2 answered:** there are no derivatives endpoints. Money axis rebuilt around
       turnover — decision D10
 - [x] **Open question 3 answered:** fear and greed is a real endpoint, not only a site chart
+- [x] `sql/002_derived.sql` — `market_metric`, `asset_metric`, `asset_universe`, `extraction_log`,
+      `scores`
+- [x] `lib/extract.php` — pure, single-payload, no clock and no network, so it is testable and a
+      rebuild is order-independent
+- [x] `bin/extract.php` — `--rebuild`, `--limit`, `--dry-run`, `--endpoint`, locked like the poller.
+      Verified idempotent against a real MySQL: a rebuild re-derives the same rows, it does not
+      double the series
+- [x] `tests/run.php` + 21 extraction tests, no framework and no network
+- [x] `bin/health.php` widened with extraction lag and skip reasons
+- [x] Found and fixed: preflight passed a PHP 7.4 host, but `lib/http.php` uses `match()`, so such
+      a host would have parse-errored instead of reporting anything. Floor is 8.0 now
 
 ## What is blocked on you
 
@@ -86,18 +102,23 @@ without anyone touching anything.
 
 ---
 
-## Day 2 — structure, without stopping the recording
+## Day 2 — mostly done, ahead of schedule
 
-The poller keeps running untouched while you do this. Never take it offline to refactor.
+Built on 13 Sep 2026 while Day 1 was blocked on credentials. What is left needs the key:
 
-- [ ] `sql/002_derived.sql` — `market_metric`, `asset_metric`, `scores`, `asset_universe`
-- [ ] Extraction pass that reads stored raw payloads and populates the typed tables, so it can be
-      re-run over all history when the parsing turns out to be wrong
-- [ ] Confirm batching from a real `quotes_latest` payload — the poller assumes 100 ids per call
-      and that assumption is currently untested (open question 6)
-- [ ] Widen `bin/health.php` to report extraction lag as well as fetch health
+- [ ] Re-point the extraction tests at `tests/fixtures/live/` and run them. **Every failure is a
+      place where the documented shape and the real one disagree.** Fix the extractor, bump
+      `EXTRACTOR_VERSION` in `lib/extract.php`, run `php bin/extract.php --rebuild`
+- [ ] Confirm batching from a real `quotes_latest` payload — open question 6. The extractor already
+      records `quotes_asset_count` per sample, so the check is a query: does a 100-id request come
+      back as 100 assets?
+- [ ] Add the extractor's cron entry (`docs/deploy.md`) and watch `bin/health.php` report 0 pending
 
 ## Day 3–4 — scoring
+
+Everything the scoring layer reads is now in `market_metric` and `asset_metric`, and the three
+cross-sample inputs it owns are listed in `docs/data-model.md`: trending churn, exchange reserve
+movement, and every percentile.
 
 - [ ] Fixed reference ranges for each input, written down in `docs/method.md` first, code second
 - [ ] Voice score, Money score, Divergence — market-wide

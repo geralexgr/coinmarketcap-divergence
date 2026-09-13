@@ -1,0 +1,7 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 1},
+  "data": [
+    {"post_id": "1", "comment_count": "4", "like_count": "10", "text_content": "a"},
+    {"post_id": "2", "comment_count": "0", "like_count": "2",  "text_content": "b"}
+  ]
+}

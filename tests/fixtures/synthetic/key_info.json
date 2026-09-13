@@ -1,0 +1,11 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 0},
+  "data": {
+    "plan": {"credit_limit_monthly": 300000, "rate_limit_minute": 30},
+    "usage": {
+      "current_minute": {"requests_made": 2, "requests_left": 28},
+      "current_day": {"credits_used": 480, "credits_left": 9520},
+      "current_month": {"credits_used": 4210, "credits_left": 295790}
+    }
+  }
+}

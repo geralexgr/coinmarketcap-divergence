@@ -36,7 +36,10 @@ echo str_repeat('-', 78) . "\n";
 // --- PHP itself -------------------------------------------------------------
 // The cron entry needs the absolute binary path; cron's PATH is not a login shell's.
 check('PHP CLI binary path', PHP_BINARY !== '', PHP_BINARY ?: 'unknown');
-check('PHP version', PHP_VERSION_ID >= 70400, PHP_VERSION . ' (need 7.4+)');
+// 8.0, not 7.4: lib/http.php uses match() and str_contains(), so a 7.4 host does not
+// fail at runtime with a clear message — it fails at parse time, before the poller can
+// say anything at all. The floor this checks has to be the floor the code actually has.
+check('PHP version', PHP_VERSION_ID >= 80000, PHP_VERSION . ' (need 8.0+)');
 check('SAPI is CLI', PHP_SAPI === 'cli', PHP_SAPI);
 
 foreach (['curl' => true, 'pdo_mysql' => true, 'json' => true, 'openssl' => true, 'zlib' => false] as $ext => $blocks) {
@@ -115,6 +118,13 @@ if (is_array($config) && !empty($config['db_name'])) {
         $present = schema_is_present($pdo);
         check('Schema applied (001_init.sql)', $present,
             $present ? 'raw_samples + fetch_log exist' : 'run: mysql -u USER -p DB < sql/001_init.sql');
+
+        // Not blocking: the recorder runs without the derived tables, and on day 1 it
+        // should. Only the extractor needs these, and recording comes first.
+        $derived = derived_schema_is_present($pdo);
+        check('Derived tables (002_derived.sql)', $derived,
+            $derived ? 'market_metric + asset_metric + scores exist' : 'not migrated yet — only needed for bin/extract.php',
+            false);
 
         // Writing is the only privilege that matters; SELECT alone records nothing.
         $pdo->query('SELECT 1');

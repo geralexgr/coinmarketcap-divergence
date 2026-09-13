@@ -56,6 +56,16 @@ Whether the per-asset endpoints accept comma-separated id lists, and the maximum
 **What it changes:** whether 100 assets costs 1 request or 100, which determines whether the
 30 requests/minute limit constrains the asset universe at all.
 
+**How it gets answered, as of 13 Sep 2026:** by query, not by watching a terminal once.
+`lib/extract.php` records `quotes_asset_count` for every `quotes_latest` sample — the number of
+assets the payload actually carried. The poller requests 100 ids per call, so:
+
+```sql
+SELECT MIN(value), MAX(value), COUNT(*) FROM market_metric WHERE metric = 'quotes_asset_count';
+```
+
+A max below 100 is the cap, and it is then visible for every sample rather than for one.
+
 ---
 
 ## 7. Normalisation window length — ❓ open, not blocking

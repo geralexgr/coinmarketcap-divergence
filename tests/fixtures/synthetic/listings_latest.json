@@ -1,0 +1,13 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 1},
+  "data": [
+    {"id": 1, "name": "Bitcoin", "symbol": "BTC", "cmc_rank": 1,
+     "quote": {"USD": {"price": 61000.5, "volume_24h": 40000000000, "volume_change_24h": -12.5,
+                        "percent_change_24h": 1.85, "market_cap": 1200000000000}}},
+    {"id": 1027, "name": "Ethereum", "symbol": "ETH", "cmc_rank": 2,
+     "quote": {"USD": {"price": 2400.0, "volume_24h": 20000000000, "volume_change_24h": 4.0,
+                        "percent_change_24h": -0.5, "market_cap": 300000000000}}},
+    {"id": 9999, "name": "Newcoin", "symbol": "NEW", "cmc_rank": 97,
+     "quote": {"USD": {"price": 0.01, "volume_24h": 5000000, "market_cap": 0}}}
+  ]
+}

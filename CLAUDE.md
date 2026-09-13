@@ -17,9 +17,12 @@
 > | What the UI shows | [docs/ui-spec.md](docs/ui-spec.md) |
 > | How to deploy | [docs/deploy.md](docs/deploy.md) |
 >
-> **Status: recording layer built, not deployed.** Schema, poller, endpoint verifier, host
-> preflight and health check all exist and are tested end-to-end against a real MySQL. **Nothing is
-> recording yet** — that needs the API key and the cPanel host.
+> **Status: recording and extraction layers built, not deployed.** Schema (001 and 002), poller,
+> extractor, endpoint verifier, host preflight, health check and a dependency-free test harness all
+> exist and are tested end-to-end against a real MySQL. **Nothing is recording yet** — that needs
+> the API key and the cPanel host. The extractor was written against documented response shapes, so
+> its fixtures are synthetic until a key exists; re-running the tests against real payloads is the
+> first task once one does.
 
 A tool that measures the gap between what the crypto market is **saying** and what it has
 **committed money to**. Built for the CoinMarketCap API Hackathon (submissions close early

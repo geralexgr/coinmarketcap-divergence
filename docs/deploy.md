@@ -33,8 +33,12 @@ If the host cannot point a document root at a subdirectory, `public/` contents g
 
 - Create the database and a user with only the privileges needed (`SELECT, INSERT, UPDATE, DELETE`,
   plus DDL while migrating)
-- Confirm MySQL 5.7+ for JSON column support; if older, raw payloads go in `LONGTEXT`
-- `mysql -u USER -p DB < sql/001_init.sql`
+- Raw payloads go in `LONGTEXT`, not a JSON column, so MySQL 5.6 is enough (D11)
+- `mysql -u USER -p DB < sql/001_init.sql` — the recording core. Enough to start recording
+- `mysql -u USER -p DB < sql/002_derived.sql` — the derived tables. Only `bin/extract.php` needs
+  these, so if anything about them goes wrong, apply 001 and start recording anyway
+
+Both are safe to re-run: every statement is `IF NOT EXISTS`.
 
 ## 3. Config
 
@@ -59,6 +63,7 @@ Before the cron entry exists. From an SSH session on the host, not a laptop:
 /usr/local/bin/php /home/USER/divergence/bin/preflight.php
 /usr/local/bin/php /home/USER/divergence/bin/verify-endpoints.php --save-fixtures
 /usr/local/bin/php /home/USER/divergence/poller/run.php --once
+/usr/local/bin/php /home/USER/divergence/bin/extract.php --verbose
 ```
 
 `preflight.php` checks the PHP version and extensions, DNS, a raw TLS connect, an authenticated
@@ -66,20 +71,35 @@ call, the MySQL connection and INSERT grant, and the log directory. If outbound 
 CLI, this is where it surfaces — see `open-questions.md` item 5.
 
 `verify-endpoints.php` then settles which endpoints the plan permits, costs about 20 credits, and
-with `--save-fixtures` leaves real payloads in `tests/fixtures/live/` for the extraction layer to be
-built against without spending more.
+with `--save-fixtures` leaves real payloads in `tests/fixtures/live/`. The extraction layer is
+already built against the documented shapes, so the thing to do with those payloads is run the
+tests against them: `php tests/run.php extract`, re-pointed at `live/`. Each failure is a place
+where the documentation and the API disagree.
+
+The `extract.php --verbose` run then shows, per payload, what was read and what was skipped and
+why. It writes no derived rows for a payload it does not understand — it records the reason instead,
+and `bin/health.php` surfaces it.
 
 The `--once` run prints what it fetched and what it wrote. `--dry-run` alongside it fetches and
 reports without writing.
 
 ## 5. Cron
 
-cPanel → Cron Jobs. Two entries.
+cPanel → Cron Jobs. Three entries.
 
 ```
 */5  * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
 */15 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
 ```
+
+The extractor is separate from the poller on purpose. It costs no credits and touches no network,
+so a slow or failing extraction must never be able to delay a fetch — the fetch is the part that
+cannot be caught up on later. Running it at an interval that does not divide the poller's also keeps
+the two off the same tick on a host that limits concurrent processes.
+
+`--limit` caps one run's work so a tick stays short on shared hosting; anything left over is picked
+up by the next one, oldest first.
 
 Notes:
 - Absolute paths for both the binary and the script. Cron's `PATH` is not a login shell's.
@@ -90,6 +110,7 @@ Notes:
 - Not a `wget` to a URL: that inherits HTTP timeouts and creates a public endpoint needing
   protection.
 - Confirm the host's minimum interval before assuming `*/5` is honoured.
+- `bin/extract.php` takes its own lock, so a long rebuild and a scheduled run cannot collide.
 
 ## 6. Confirm it is recording
 
