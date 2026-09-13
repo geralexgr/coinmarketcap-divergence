@@ -21,7 +21,7 @@ declare(strict_types=1);
 /**
  * What the plan permits, measured — not read off the pricing page.
  *
- * Run: `php bin/verify-endpoints.php` on 13 September 2026, key ending 3c96.
+ * Run: `php bin/verify-endpoints.php` on 13 September 2026.
  * 'ok' = HTTP 200 with a data block. 'forbidden' = HTTP 403, the path exists and this
  * plan may not call it. A plan upgrade would change these; nothing in this repo will.
  *

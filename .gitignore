@@ -1,5 +1,13 @@
 # The real config lives outside the webroot and never enters git.
-config.php
+#
+# ONLY the repo-root one. The leading slash is load-bearing: a bare `config.php`
+# matches at ANY depth, which silently excluded lib/config.php — a core source file
+# every script requires — from the initial commit until 13 Sep 2026. A fresh clone
+# fatally failed on every entrypoint and nothing said why, because an ignored file
+# does not show up in git status.
+#
+# The deploy layout's real config lives at ../config.php, outside the repo entirely,
+# so no rule here is what protects it.
 /config.php
 
 # Local dev overrides
