@@ -9,20 +9,27 @@ Operational scripts. Never web-reachable.
 | `probe-paths.php` | which API paths exist at all, by the 401/404 split | no |
 | `verify-endpoints.php` | which of those the plan permits, with payload shapes | yes |
 | `preflight.php` | can this host run the poller — PHP, extensions, HTTPS, MySQL, grants | optional |
-| `health.php` | is it recording: success rate, cadence, longest gap, credits | no |
+| `health.php` | is it recording *and* is it being extracted: success rate, cadence, longest gap, credits, extraction lag | no |
+| `extract.php` | reads stored payloads into the typed tables. Costs no credits, touches no network | no |
 
 Order on a fresh host: `preflight` → `verify-endpoints` → migrate → `poller/run.php --once` →
-`health`.
+`extract` → `health`.
 
 `health.php` is the one that matters day to day, and it exits non-zero when nothing has landed
-recently, so it doubles as a cron watchdog. A dead poller should be noticed the same day, not at
+recently *or* when extraction has fallen more than an hour behind, so it doubles as a cron
+watchdog for both crons. A dead poller loses history that cannot be recovered; a dead extractor
+loses nothing but silently freezes every chart. Both should be noticed the same day, not at
 submission time.
+
+`extract.php` is safe to run while the poller is running — it only ever reads `raw_samples`. A
+parsing fix does not need a separate backfill script: bump `EXTRACTOR_VERSION` in `lib/extract.php`
+and run `php bin/extract.php --rebuild`, which re-reads every payload ever stored and updates the
+derived rows in place rather than doubling the series.
 
 ## Planned
 
 | File | Job |
 |---|---|
-| `backfill-extract.php` | re-runs extraction over stored raw payloads after a parsing fix |
 | `recompute-scores.php` | rebuilds `scores` at a new `method_version` |
 
 ## Why two separate endpoint scripts

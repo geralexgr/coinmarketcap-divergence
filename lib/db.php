@@ -128,3 +128,166 @@ function schema_is_present(PDO $pdo): bool
         return false;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Derived tables (002_derived.sql). Everything below is rebuildable from
+// raw_samples, which is why all of it upserts rather than appends: running the
+// extractor twice over the same payload must produce the same table, not two
+// copies of the same series.
+// ---------------------------------------------------------------------------
+
+/** True when 002_derived.sql has been applied. */
+function derived_schema_is_present(PDO $pdo): bool
+{
+    try {
+        $pdo->query('SELECT 1 FROM market_metric LIMIT 1');
+        $pdo->query('SELECT 1 FROM asset_metric LIMIT 1');
+        $pdo->query('SELECT 1 FROM asset_universe LIMIT 1');
+        $pdo->query('SELECT 1 FROM extraction_log LIMIT 1');
+        return true;
+    } catch (PDOException $e) {
+        return false;
+    }
+}
+
+/**
+ * @param array<int,array{metric:string,value:float}> $metrics
+ * @return int rows written
+ */
+function insert_market_metrics(PDO $pdo, int $rawSampleId, string $endpoint, string $sampledAt, array $metrics): int
+{
+    if ($metrics === []) {
+        return 0;
+    }
+
+    $placeholders = [];
+    $values = [];
+    foreach ($metrics as $row) {
+        $placeholders[] = '(?, ?, ?, ?, ?)';
+        array_push($values, $rawSampleId, $endpoint, $row['metric'], $row['value'], $sampledAt);
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO market_metric (raw_sample_id, endpoint, metric, value, sampled_at) VALUES '
+        . implode(', ', $placeholders)
+        . ' ON DUPLICATE KEY UPDATE value = VALUES(value), endpoint = VALUES(endpoint), sampled_at = VALUES(sampled_at)'
+    );
+    $stmt->execute($values);
+
+    return count($metrics);
+}
+
+/**
+ * Chunked, because a listings sample is ~100 assets times ~7 metrics and MySQL has a
+ * max_allowed_packet that shared hosts set low.
+ *
+ * @param array<int,array{cmc_id:int,symbol:string,metric:string,value:float}> $metrics
+ * @return int rows written
+ */
+function insert_asset_metrics(PDO $pdo, int $rawSampleId, string $endpoint, string $sampledAt, array $metrics, int $chunk = 200): int
+{
+    $written = 0;
+
+    foreach (array_chunk($metrics, max(1, $chunk)) as $batch) {
+        $placeholders = [];
+        $values = [];
+        foreach ($batch as $row) {
+            $placeholders[] = '(?, ?, ?, ?, ?, ?, ?)';
+            array_push(
+                $values,
+                $rawSampleId,
+                $endpoint,
+                $row['cmc_id'],
+                substr($row['symbol'], 0, 32),
+                $row['metric'],
+                $row['value'],
+                $sampledAt
+            );
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO asset_metric (raw_sample_id, endpoint, cmc_id, symbol, metric, value, sampled_at) VALUES '
+            . implode(', ', $placeholders)
+            . ' ON DUPLICATE KEY UPDATE value = VALUES(value), symbol = VALUES(symbol), sampled_at = VALUES(sampled_at)'
+        );
+        $stmt->execute($values);
+        $written += count($batch);
+    }
+
+    return $written;
+}
+
+/**
+ * Membership of the tracked universe.
+ *
+ * first_seen uses LEAST so that a rebuild, which may process samples in any order,
+ * cannot move an asset's arrival forward in time; last_seen uses GREATEST for the
+ * same reason. An asset that stops appearing simply stops having last_seen moved,
+ * which is what makes "when did this leave the top 100" answerable later.
+ *
+ * @param array<int,array{cmc_id:int,symbol:string,name:string,rank:?int}> $assets
+ */
+function upsert_asset_universe(PDO $pdo, string $sampledAt, array $assets, int $chunk = 100): int
+{
+    $written = 0;
+
+    foreach (array_chunk($assets, max(1, $chunk)) as $batch) {
+        $placeholders = [];
+        $values = [];
+        foreach ($batch as $asset) {
+            $placeholders[] = '(?, ?, ?, ?, ?, ?)';
+            array_push(
+                $values,
+                $asset['cmc_id'],
+                substr($asset['symbol'], 0, 32),
+                substr($asset['name'], 0, 120),
+                $asset['rank'],
+                $sampledAt,
+                $sampledAt
+            );
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO asset_universe (cmc_id, symbol, name, rank_last, first_seen, last_seen) VALUES '
+            . implode(', ', $placeholders)
+            . ' ON DUPLICATE KEY UPDATE
+                 symbol     = VALUES(symbol),
+                 name       = VALUES(name),
+                 rank_last  = IF(VALUES(last_seen) >= last_seen, VALUES(rank_last), rank_last),
+                 first_seen = LEAST(first_seen, VALUES(first_seen)),
+                 last_seen  = GREATEST(last_seen, VALUES(last_seen))'
+        );
+        $stmt->execute($values);
+        $written += count($batch);
+    }
+
+    return $written;
+}
+
+/** What happened to one payload, so the next run knows not to read it again. */
+function record_extraction(
+    PDO $pdo,
+    int $rawSampleId,
+    int $extractorVersion,
+    string $status,
+    int $rowsWritten,
+    ?string $note
+): void {
+    $stmt = $pdo->prepare(
+        'INSERT INTO extraction_log (raw_sample_id, extractor_version, extracted_at, status, rows_written, note)
+         VALUES (:raw_sample_id, :version, :at, :status, :rows, :note)
+         ON DUPLICATE KEY UPDATE
+            extracted_at = VALUES(extracted_at),
+            status       = VALUES(status),
+            rows_written = VALUES(rows_written),
+            note         = VALUES(note)'
+    );
+    $stmt->execute([
+        ':raw_sample_id' => $rawSampleId,
+        ':version'       => $extractorVersion,
+        ':at'            => utc_now(),
+        ':status'        => $status,
+        ':rows'          => $rowsWritten,
+        ':note'          => $note,
+    ]);
+}

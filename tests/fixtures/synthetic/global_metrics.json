@@ -1,0 +1,17 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 1},
+  "data": {
+    "active_cryptocurrencies": 9421,
+    "btc_dominance": 54.2153,
+    "eth_dominance": 13.0881,
+    "quote": {
+      "USD": {
+        "total_market_cap": 2000000000000,
+        "total_volume_24h": 100000000000,
+        "stablecoin_volume_24h": 60000000000,
+        "altcoin_volume_24h": 40000000000,
+        "last_updated": "2026-09-13T09:00:00.000Z"
+      }
+    }
+  }
+}

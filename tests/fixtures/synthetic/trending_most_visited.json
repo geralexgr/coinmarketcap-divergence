@@ -1,0 +1,8 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 1},
+  "data": [
+    {"id": 1027, "name": "Ethereum", "symbol": "ETH"},
+    {"id": 1, "name": "Bitcoin", "symbol": "BTC"},
+    {"id": 5426, "name": "Solana", "symbol": "SOL"}
+  ]
+}

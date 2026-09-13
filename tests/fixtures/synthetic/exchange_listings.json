@@ -1,0 +1,9 @@
+{
+  "status": {"timestamp": "2026-09-13T09:00:00.000Z", "error_code": 0, "error_message": null, "credit_count": 1},
+  "data": [
+    {"id": 270, "name": "Binance", "slug": "binance", "quote": {"USD": {"volume_24h": 6000000000}}},
+    {"id": 89,  "name": "Bybit",   "slug": "bybit",   "quote": {"USD": {"volume_24h": 2000000000}}},
+    {"id": 294, "name": "Kraken",  "slug": "kraken",  "quote": {"USD": {"volume_24h": 1000000000}}},
+    {"id": 302, "name": "Dormant", "slug": "dormant", "quote": {"USD": {"volume_24h": 0}}}
+  ]
+}

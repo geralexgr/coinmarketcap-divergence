@@ -17,9 +17,12 @@
 > | What the UI shows | [docs/ui-spec.md](docs/ui-spec.md) |
 > | How to deploy | [docs/deploy.md](docs/deploy.md) |
 >
-> **Status: recording layer built, not deployed.** Schema, poller, endpoint verifier, host
-> preflight and health check all exist and are tested end-to-end against a real MySQL. **Nothing is
-> recording yet** — that needs the API key and the cPanel host.
+> **Status: recording and extraction layers built, not deployed.** Schema (001 and 002), poller,
+> extractor, endpoint verifier, host preflight, health check and a dependency-free test harness all
+> exist and are tested end-to-end against a real MySQL. **Nothing is recording yet** — that needs
+> the API key and the cPanel host. The extractor was written against documented response shapes, so
+> its fixtures are synthetic until a key exists; re-running the tests against real payloads is the
+> first task once one does.
 
 A tool that measures the gap between what the crypto market is **saying** and what it has
 **committed money to**. Built for the CoinMarketCap API Hackathon (submissions close early
@@ -56,7 +59,10 @@ push back and propose the measured version instead.
 Two scores, both normalised 0–100, both sampled continuously.
 
 **Voice** — what the crowd is saying.
-Sources: social/community volume, fear and greed, trending topics.
+Intended sources: social/community volume, fear and greed, trending topics. **On the Basic plan,
+only fear and greed is callable** — the trending, community and content endpoints all answer 403
+(D14). That leaves the axis with one input at daily resolution, and it is the open product
+question. Do not describe Voice as a five-minute measurement while this is true.
 
 **Money** — how much money is actually moving.
 Sources: turnover (volume ÷ market cap), exchange volume concentration, exchange reserve movement.
@@ -65,6 +71,10 @@ Originally designed around funding rates, open interest and liquidations. **Thos
 the CoinMarketCap API** — 38 paths probed, all absent, verified 12 Sep 2026. See decision D10. The
 substitute measures money *moving*, not money *committed and leveraged*, and the method page says so
 in those words.
+
+Amended 13 Sep 2026: `global-metrics` does carry **`derivatives_volume_24h`**, and it is callable.
+Market-wide only, no funding rate and no open interest, but it is a genuinely positioning-shaped
+number and it belongs on the axis (D14).
 
 **Divergence** — the signed gap between them.
 
@@ -190,9 +200,10 @@ with no key and no credits. Watch for the trap — an unknown path answers **HTT
 `error_code: 500` "The system is busy", so never judge a response by its HTTP status alone. Use
 `cmc_outcome()`.
 
-1. **Which endpoints respond on Startup tier.** The plan gives 23 latest-data endpoints against
-   Standard's 35. 26 paths are confirmed to *exist*; which ones the plan permits is untested and
-   needs the key. Run `php bin/verify-endpoints.php` from the host.
+1. ~~**Which endpoints respond on Startup tier.**~~ **Answered 13 Sep 2026, and the answer is not
+   Startup.** The key is on **Basic**: 15,000 credits/month, 7 endpoints callable, 10 forbidden.
+   The whole Voice axis except fear and greed is behind the paywall. See D14 and
+   `docs/endpoint-access.md`.
 
 2. ~~**Derivatives access.**~~ **Answered 12 Sep 2026: there is none.** 38 candidate paths across
    `/v1/`–`/v4/`, every one absent. Money axis rebuilt around turnover — D10. Two payload
@@ -215,12 +226,14 @@ with no key and no credits. Watch for the trap — an unknown path answers **HTT
 
 ## Constraints
 
-- **Rate limit: 30 requests/minute.** Per-asset polling across a large universe needs batching.
-  Cap the asset universe at the top ~100 and widen only if the budget allows.
-- **300,000 call credits/month.** Generous, but count them: log credits per call from the response
-  so usage is observable rather than guessed.
-- **Sampling cadence:** 5 minutes market-wide, 15 minutes per asset. Roughly 6,000 market rows and
-  600,000 asset rows over three weeks — around 100 MB with indexes.
+- **Rate limit: 50 requests/minute**, measured 13 Sep 2026, not the 30 assumed. Per-asset polling
+  across a large universe still needs batching. Cap the asset universe at the top ~100.
+- **15,000 call credits/month — not 300,000.** The key is on the Basic plan. This is the binding
+  constraint on the whole product: the originally planned cadence exhausts it in twelve days. See
+  D14 and D15. Log credits per call from the response so usage is observable rather than guessed.
+- **Sampling cadence: 10 minutes market-wide, 30 minutes per asset** — set by the budget, not by
+  what would be ideal. 624 credits/day. Roughly 2,500 market rows and 250,000 asset rows over
+  three weeks.
 - Keep each cron run short and stateless. Shared hosts kill long-running processes.
 
 ---

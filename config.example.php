@@ -17,5 +17,9 @@ return [
     'log_path'          => '/home/USER/logs/divergence.log',
     'asset_universe'    => 100,   // top N by market cap
     'request_timeout'   => 10,    // seconds; shared hosts kill long runs
-    'max_requests_per_minute' => 30,
+
+    // Basic plan, measured 13 Sep 2026 — see docs/decisions.md D14.
+    // Both are reported by /v1/key/info; these are the fallback before the first sample.
+    'max_requests_per_minute' => 50,
+    'credit_limit_monthly'    => 15000,
 ];

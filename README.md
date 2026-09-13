@@ -7,9 +7,15 @@ volume and exchange flow on another — and never puts them on the same axis. Th
 
 Built for the CoinMarketCap API Hackathon (submissions close early October 2026).
 
-> **Status: recording layer built, not yet deployed.** The schema, the poller, the endpoint
-> verifier and the health check exist and are tested end-to-end against a real MySQL. Nothing is
-> recording yet, because that needs an API key and the host. Start at [TOMORROW.md](TOMORROW.md).
+> **Status: recording and extraction layers built and verified against the live API, not yet
+> deployed.** The schema, the poller, the extractor, the endpoint verifier and the health check
+> exist, are tested end-to-end against a real MySQL, and the extractor is tested against real
+> CoinMarketCap payloads. Nothing is recording yet, because that needs the host.
+>
+> **The plan is Basic: 15,000 credits/month, and ten of the seventeen endpoints this design wanted
+> answer 403** — including every social and trending endpoint the Voice axis was built on. See
+> [D14](docs/decisions.md) and [docs/endpoint-access.md](docs/endpoint-access.md). Start at
+> [TOMORROW.md](TOMORROW.md).
 
 ---
 
@@ -172,7 +178,7 @@ divergence/
 
 ## How to run
 
-The recording layer runs today. Everything downstream of it does not exist yet.
+Recording and extraction run today. Scoring and the web app do not exist yet.
 
 ```bash
 # 1. Does the API surface look the way this repo says it does? No key needed, no credits.
@@ -187,14 +193,24 @@ php bin/preflight.php
 # 4. Which endpoints does the plan let us call? ~20 credits.
 php bin/verify-endpoints.php --save-fixtures
 
-# 5. Create the tables.
+# 5. Create the tables. 001 is the recording core; 002 is everything derived from it.
 mysql -u USER -p DB < sql/001_init.sql
+mysql -u USER -p DB < sql/002_derived.sql
 
 # 6. One sample, verbose, nothing hidden.
 php poller/run.php --once
 
-# 7. Is it still recording?
+# 7. Read what was stored into the typed tables. No credits, no network.
+php bin/extract.php --verbose
+
+# 8. Is it still recording, and is it still being read?
 php bin/health.php
+```
+
+The tests need none of the above — no key, no database, no network:
+
+```bash
+php tests/run.php
 ```
 
 `--dry-run` fetches and reports without writing, for when you want to see the shape of a response
@@ -203,12 +219,15 @@ before committing to storing it.
 Then the cron entries, which are the point of all of the above:
 
 ```
-*/5  * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
-*/15 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
+*/30 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
 ```
 
 The poller takes a per-scope lock, so a slow run makes the next tick skip rather than pile up
-behind it. Full setup, including the parts specific to this host:
+behind it. The extractor is a separate entry because it costs no credits and touches no network:
+a slow extraction must never be able to delay a fetch, which is the half that cannot be caught up
+on later. Full setup, including the parts specific to this host:
 [`docs/deploy.md`](docs/deploy.md).
 
 ---
@@ -280,7 +299,8 @@ Full spec: [`docs/method.md`](docs/method.md).
 ## Constraints worth remembering
 
 - **30 requests/minute.** Per-asset polling needs batching. Cap the universe at the top ~100.
-- **300,000 call credits/month.** Generous, but log credits per call from the response so usage is
+- **15,000 call credits/month** — the Basic plan, measured rather than assumed (D14). This is the
+  binding constraint on the entire product and it sets the cadence (D15). Log credits per call from the response so usage is
   observable rather than guessed.
 - **Cadence:** 5 minutes market-wide, 15 minutes per asset. Roughly 6k market rows and 600k asset
   rows over three weeks — about 100 MB with indexes.
