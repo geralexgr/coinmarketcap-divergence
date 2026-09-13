@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Divergence">
+  <!--
+    The product in 64 pixels: two axes, four quadrants, and a point at the end of a
+    trail. Voice runs up, Money runs right, and the dot sits where the market is —
+    low Voice, high Money, the reading the tool exists to make visible.
+
+    Blue is Voice and rust is Money everywhere in this product, so the axes carry the
+    same colours here as they do on the chart.
+  -->
+  <rect width="64" height="64" fill="#EEF1F0"/>
+  <rect x="34" y="8" width="22" height="24" fill="#A34428" opacity="0.10"/>
+  <g stroke="#D3D9D7" stroke-width="1.5">
+    <path d="M12 8 V56 H56" fill="none"/>
+  </g>
+  <g stroke="#D3D9D7" stroke-width="1" stroke-dasharray="2 3">
+    <path d="M34 8 V56 M12 32 H56" fill="none"/>
+  </g>
+  <!-- the trail -->
+  <path d="M18 46 L24 42 L30 40 L38 30 L45 22" fill="none" stroke="#6B7780"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+  <!-- where it is now -->
+  <circle cx="45" cy="22" r="7.5" fill="none" stroke="#A34428" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="45" cy="22" r="4.5" fill="#A34428"/>
+  <!-- axis ticks, in the axis colours -->
+  <rect x="10" y="10" width="4" height="2" fill="#3A6EA5"/>
+  <rect x="52" y="54" width="4" height="2" fill="#A34428"/>
+</svg>

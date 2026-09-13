@@ -141,8 +141,10 @@ if ($reference !== '') {
 $sort = query_choice('sort', ['gap', 'voice', 'money', 'symbol', 'rank'], 'gap');
 $quadrants = ['loud_and_leveraged', 'chatter_without_conviction', 'quiet_but_leveraged', 'apathy'];
 $filter = query_choice('quadrant', $quadrants, '') ?: null;
+// Stablecoins are excluded by default and the page says so — see D21.
+$withStables = isset($_GET['stablecoins']) && $_GET['stablecoins'] === '1';
 
-$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $filter, 200);
+$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $filter, 200, $withStables);
 
 if ($rows === []) {
     render_empty_state(
@@ -156,8 +158,11 @@ if ($rows === []) {
 }
 
 /** Keeps the current filter when a sort link is followed, and the reverse. */
-$link = static function (array $overrides) use ($sort, $filter): string {
-    $params = array_filter(['sort' => $sort, 'quadrant' => $filter] + [], static fn($v) => $v !== null);
+$link = static function (array $overrides) use ($sort, $filter, $withStables): string {
+    $params = array_filter(
+        ['sort' => $sort, 'quadrant' => $filter, 'stablecoins' => $withStables ? '1' : null],
+        static fn($v) => $v !== null
+    );
     return 'assets.php?' . http_build_query(array_filter($overrides + $params, static fn($v) => $v !== null && $v !== ''));
 };
 ?>
@@ -179,6 +184,17 @@ $link = static function (array $overrides) use ($sort, $filter): string {
     92nd percentile of the top 100 means exactly that, and nothing about what happens next.
     <a href="method.php#basis">How this differs from the market chart</a>.
   </p>
+  <p class="plotsub">
+    <?php if ($withStables): ?>
+      Stablecoins are <b>included</b>. They carry enormous turnover and almost no narrative by
+      definition, so they crowd the top of a gap-ranked table without telling you anything.
+      <a href="<?= h($link(['stablecoins' => ''])) ?>">Hide them</a>.
+    <?php else: ?>
+      Stablecoins are excluded: high turnover and no narrative is what a stablecoin <em>is</em>, so
+      ranking them by that gap measures a definition rather than a condition.
+      <a href="<?= h($link(['stablecoins' => '1'])) ?>">Show them anyway</a>.
+    <?php endif; ?>
+  </p>
 
   <table class="screener">
     <thead>
@@ -195,7 +211,7 @@ $link = static function (array $overrides) use ($sort, $filter): string {
       <?php foreach ($rows as $row): ?>
       <tr>
         <td class="tick"><a href="assets.php?asset=<?= (int) $row['cmc_id'] ?>"><?= h($row['symbol']) ?></a>
-            <em><?= h($row['name']) ?></em></td>
+            <em><?= h($row['name']) ?><?= !empty($row['is_stablecoin']) ? ' · stablecoin' : '' ?></em></td>
         <td class="muted"><?= $row['rank_last'] !== null ? (int) $row['rank_last'] : '—' ?></td>
         <td><?= h(fmt_score($row['voice'])) ?></td>
         <td><?= h(fmt_score($row['money'])) ?></td>

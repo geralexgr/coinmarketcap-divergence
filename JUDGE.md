@@ -73,7 +73,7 @@ cd coinmarketcap-divergence
 php tests/run.php
 ```
 
-68 tests, no framework, no network, no database, no composer. They cover the parts that fail
+70 tests, no framework, no network, no database, no composer. They cover the parts that fail
 *silently*: normalisation boundaries, a missing input being scored as zero, a percentile that peeks
 at the future, and the readout copy being grepped for future-tense words.
 
@@ -119,7 +119,10 @@ We would rather you heard this from us than found it.
   all on this plan. It is the weakest number in the product and it is labelled as such wherever it
   appears. [D18](docs/decisions.md)
 - **Open interest is BTC only.** The endpoint takes one symbol per call, so a hundred assets would
-  be a hundred credits per sample.
+  be a hundred credits per sample. Liquidations do not have this limit — 100 assets for one credit.
+- **The screener hides stablecoins by default.** High turnover with no narrative is what a
+  stablecoin is, so ranking them by that gap measures a definition. They are one click away and the
+  page says so. [D21](docs/decisions.md)
 - **We were wrong in public once.** This repo spent two days documenting that the CoinMarketCap API
   has no derivatives endpoints, after probing 38 paths. It has them; they live under `/v5/` and our
   probe swept `/v1/`–`/v4/`. [D20](docs/decisions.md) records the correction, how it was found, and

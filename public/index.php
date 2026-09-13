@@ -45,7 +45,8 @@ $derived = current_derived_inputs($pdo);
 $voiceInputs = current_input_values($pdo, available_inputs('voice', 'market'), $derived);
 $moneyInputs = current_input_values($pdo, available_inputs('money', 'market'), $derived);
 
-$assets = latest_asset_scores($pdo, METHOD_VERSION, 'gap', null, 12);
+// Stablecoins excluded, same as the screener's default — see D21.
+$assets = latest_asset_scores($pdo, METHOD_VERSION, 'gap', null, 12, false);
 
 $windowLabel = ['24h' => 'last 24 hours', '7d' => 'last 7 days', '30d' => 'last 30 days', 'all' => 'all recorded history'][$window];
 

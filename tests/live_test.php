@@ -164,3 +164,24 @@ test('LIVE liquidations carry both sides and a believable total', function (): v
     $share = $m['liquidation_long_share'] ?? -1;
     assert_true($share >= 0 && $share <= 1, 'the long share is a share, between 0 and 1');
 });
+
+test('LIVE listings flag the stablecoins and nothing else', function (): void {
+    $body = live_fixture('listings_latest');
+    if ($body === null) {
+        return;
+    }
+    $r = extract_sample('listings_latest', $body);
+
+    $stable = [];
+    foreach ($r['universe'] as $u) {
+        if ($u['is_stablecoin']) {
+            $stable[] = $u['symbol'];
+        }
+    }
+
+    // The live top 100 really does carry several, and they really do dominate a
+    // gap-ranked screener — which is why they are excluded from it by default (D21).
+    assert_true(in_array('USDT', $stable, true), 'USDT is flagged in the real payload');
+    assert_true(count($stable) >= 3, 'and it is not the only one');
+    assert_true(!in_array('BTC', $stable, true), 'bitcoin is not swept up');
+});

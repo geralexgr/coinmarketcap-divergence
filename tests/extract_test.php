@@ -360,3 +360,26 @@ test('derivative venue concentration reads the usd fields the payload actually u
     assert_close(0.625, $m['derivative_exchange_hhi'], '0.75^2 + 0.25^2');
     assert_close(400.0, $m['exchange_open_interest'], 'open interest sums across venues');
 });
+
+test('a stablecoin is identified from its own tags, not a hard-coded list', function (): void {
+    // A symbol list in code is wrong the moment a new stablecoin launches, and
+    // CoinMarketCap already publishes the answer. The payload carries several tags at
+    // once and which of them appear varies by asset, so the match is on the substring.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => [
+        ['id' => 825, 'symbol' => 'USDT', 'name' => 'Tether', 'cmc_rank' => 3,
+         'tags' => ['stablecoin', 'asset-backed-stablecoin', 'usd-stablecoin'],
+         'quote' => ['USD' => ['volume_24h' => 100.0, 'market_cap' => 1000.0]]],
+        ['id' => 1, 'symbol' => 'BTC', 'name' => 'Bitcoin', 'cmc_rank' => 1,
+         'tags' => ['mineable', 'pow', 'store-of-value'],
+         'quote' => ['USD' => ['volume_24h' => 100.0, 'market_cap' => 1000.0]]],
+        ['id' => 99, 'symbol' => 'NOTAGS', 'name' => 'No Tags', 'cmc_rank' => 99,
+         'quote' => ['USD' => ['volume_24h' => 1.0, 'market_cap' => 10.0]]],
+    ]]);
+    $r = extract_sample('listings_latest', $body);
+    $flags = [];
+    foreach ($r['universe'] as $u) { $flags[$u['symbol']] = $u['is_stablecoin']; }
+
+    assert_same(true, $flags['USDT'], 'a tagged stablecoin is flagged');
+    assert_same(false, $flags['BTC'], 'bitcoin is not');
+    assert_same(false, $flags['NOTAGS'], 'and a listing with no tags at all does not crash');
+});

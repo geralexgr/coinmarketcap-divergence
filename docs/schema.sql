@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS asset_universe (
     cmc_id     INT UNSIGNED NOT NULL,
     symbol     VARCHAR(32)  NOT NULL,
     name       VARCHAR(120) NOT NULL,
+    is_stablecoin TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'from the listings tags. A stablecoin has enormous turnover and no narrative by construction, so it dominates a gap-ranked screener with an artefact rather than a finding — see D21',
     rank_last  SMALLINT UNSIGNED NULL COMMENT 'most recent CMC rank seen',
     first_seen DATETIME(3)  NOT NULL,
     last_seen  DATETIME(3)  NOT NULL COMMENT 'still in the universe if this is recent',

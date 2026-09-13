@@ -245,7 +245,15 @@ function render_head(string $title, string $active, array $health): void
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> — Divergence</title>
 <meta name="description" content="The gap between what the crypto market is saying and what it has committed money to. A measurement, not a forecast.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/app.css">
+<!-- Link previews. Absolute URLs, because a relative og:image is ignored by most
+     scrapers — and a judge sharing the link is exactly when the preview matters. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Divergence — <?= h($title) ?>">
+<meta property="og:description" content="What the crypto market is saying, plotted against what it has committed money to. Two measurements CoinMarketCap publishes separately and never puts on the same axis.">
+<meta property="og:image" content="https://coinmarketcap.geralexgr.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
 <div class="page">

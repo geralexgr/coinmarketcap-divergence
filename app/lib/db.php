@@ -251,7 +251,7 @@ function insert_asset_metrics(PDO $pdo, int $rawSampleId, string $endpoint, stri
  * same reason. An asset that stops appearing simply stops having last_seen moved,
  * which is what makes "when did this leave the top 100" answerable later.
  *
- * @param array<int,array{cmc_id:int,symbol:string,name:string,rank:?int}> $assets
+ * @param array<int,array{cmc_id:int,symbol:string,name:string,rank:?int,is_stablecoin?:bool}> $assets
  */
 function upsert_asset_universe(PDO $pdo, string $sampledAt, array $assets, int $chunk = 100): int
 {
@@ -261,12 +261,13 @@ function upsert_asset_universe(PDO $pdo, string $sampledAt, array $assets, int $
         $placeholders = [];
         $values = [];
         foreach ($batch as $asset) {
-            $placeholders[] = '(?, ?, ?, ?, ?, ?)';
+            $placeholders[] = '(?, ?, ?, ?, ?, ?, ?)';
             array_push(
                 $values,
                 $asset['cmc_id'],
                 substr($asset['symbol'], 0, 32),
                 substr($asset['name'], 0, 120),
+                !empty($asset['is_stablecoin']) ? 1 : 0,
                 $asset['rank'],
                 $sampledAt,
                 $sampledAt
@@ -274,14 +275,15 @@ function upsert_asset_universe(PDO $pdo, string $sampledAt, array $assets, int $
         }
 
         $stmt = $pdo->prepare(
-            'INSERT INTO asset_universe (cmc_id, symbol, name, rank_last, first_seen, last_seen) VALUES '
+            'INSERT INTO asset_universe (cmc_id, symbol, name, is_stablecoin, rank_last, first_seen, last_seen) VALUES '
             . implode(', ', $placeholders)
             . ' ON DUPLICATE KEY UPDATE
-                 symbol     = VALUES(symbol),
-                 name       = VALUES(name),
-                 rank_last  = IF(VALUES(last_seen) >= last_seen, VALUES(rank_last), rank_last),
-                 first_seen = LEAST(first_seen, VALUES(first_seen)),
-                 last_seen  = GREATEST(last_seen, VALUES(last_seen))'
+                 symbol        = VALUES(symbol),
+                 name          = VALUES(name),
+                 is_stablecoin = VALUES(is_stablecoin),
+                 rank_last     = IF(VALUES(last_seen) >= last_seen, VALUES(rank_last), rank_last),
+                 first_seen    = LEAST(first_seen, VALUES(first_seen)),
+                 last_seen     = GREATEST(last_seen, VALUES(last_seen))'
         );
         $stmt->execute($values);
         $written += count($batch);
