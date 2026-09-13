@@ -104,13 +104,30 @@
     svg.appendChild(el('line', { x1: L, y1: (T + B) / 2, x2: R, y2: (T + B) / 2, class: 'qdash' }));
 
     [
-      ['Chatter without conviction', L + 10,             T + 16, 'chatter'],
-      ['Loud and leveraged',         (L + R) / 2 + 10,   T + 16, 'loud'],
-      ['Apathy',                     L + 10,             B - 8,  'apathy'],
-      ['Quiet, but leveraged',       (L + R) / 2 + 10,   B - 8,  'quiet']
+      // All four sit just inside the TOP of their own box. The lower two used to sit on
+      // the bottom edge, which is exactly where a low-Voice reading plots — the current
+      // point and its "Now" label landed on top of the quadrant name whenever the market
+      // was quiet, which is half the time.
+      ['Chatter without conviction', L + 10,           T + 16,               'chatter'],
+      ['Loud and leveraged',         (L + R) / 2 + 10, T + 16,               'loud'],
+      ['Apathy',                     L + 10,           (T + B) / 2 + 16,     'apathy'],
+      ['Quiet, but leveraged',       (L + R) / 2 + 10, (T + B) / 2 + 16,     'quiet']
     ].forEach(function (q) {
+      var lx = q[1], anchor = 'start';
+      /* Move the label to the far side of its own box if the current point is sitting on
+       * top of it. Only the live quadrant can collide — it is the only one holding the
+       * pin — and at the extremes (very high Voice with very low Money, say) the point
+       * lands within a few pixels of the text. Flipping to the other end of the same
+       * quadrant keeps the label in the right box and out of the way. */
+      if (q[3] === live) {
+        var near = Math.abs(px(last.money) - lx) < 90 && Math.abs(py(last.voice) - q[2]) < 26;
+        if (near) {
+          lx = q[1] + (R - L) / 2 - 20;
+          anchor = 'end';
+        }
+      }
       svg.appendChild(el('text', {
-        x: q[1], y: q[2], class: 'qname' + (q[3] === live ? ' live' : '')
+        x: lx, y: q[2], class: 'qname' + (q[3] === live ? ' live' : ''), 'text-anchor': anchor
       }, q[0]));
     });
 
