@@ -1,0 +1,17 @@
+# Nothing in app/ is ever served over HTTP.
+#
+# In a correct deployment this file does nothing, because app/ sits above the webroot
+# and Apache never looks at it. It exists for the deployment that is not correct — a
+# zip extracted straight into public_html, a document root pointed one level too high —
+# where it is the difference between "the site does not work" and "the poller, the
+# scoring layer and the config loader are all fetchable".
+#
+# Defence in depth, not the defence. The layout in DEPLOY.md is the defence.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

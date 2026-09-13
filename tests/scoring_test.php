@@ -12,11 +12,11 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../lib/endpoints.php';
-require_once __DIR__ . '/../scoring/inputs.php';
-require_once __DIR__ . '/../scoring/normalise.php';
-require_once __DIR__ . '/../scoring/score.php';
-require_once __DIR__ . '/../scoring/recompute.php';
+require_once __DIR__ . '/../app/lib/endpoints.php';
+require_once __DIR__ . '/../app/scoring/inputs.php';
+require_once __DIR__ . '/../app/scoring/normalise.php';
+require_once __DIR__ . '/../app/scoring/score.php';
+require_once __DIR__ . '/../app/scoring/recompute.php';
 
 // ---------------------------------------------------------------------------
 // Fixed-basis normalisation

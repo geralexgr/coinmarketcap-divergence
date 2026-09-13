@@ -1,11 +1,11 @@
 # MCP tool surface
 
-`mcp/server.php` — JSON-RPC 2.0 over stdio. Seven tools, each a thin wrapper over `lib/queries.php`,
+`app/mcp/server.php` — JSON-RPC 2.0 over stdio. Seven tools, each a thin wrapper over `app/lib/queries.php`,
 which is the same file the web app reads through: the two surfaces run the same SQL, so they cannot
 drift into answering differently (D8).
 
 ```json
-{ "mcpServers": { "divergence": { "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] } } }
+{ "mcpServers": { "divergence": { "command": "php", "args": ["/home/USER/divergence/app/mcp/server.php"] } } }
 ```
 
 The same rule applies as everywhere else: tools return measurements, never advice. A tool that

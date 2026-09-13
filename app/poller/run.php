@@ -68,7 +68,7 @@ if (!$dryRun) {
         exit(3);
     }
     if (!schema_is_present($pdo)) {
-        $log('FATAL schema missing. Run: mysql -u USER -p DB < sql/001_init.sql', true);
+        $log('FATAL Schema missing. Apply docs/schema.sql to the database (phpMyAdmin -> SQL tab, or: mysql -u USER -p DB < docs/schema.sql)', true);
         exit(3);
     }
 }

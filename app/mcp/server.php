@@ -22,7 +22,7 @@
  *
  * Configure a client with:
  *
- *     { "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] }
+ *     { "command": "php", "args": ["/home/USER/divergence/app/mcp/server.php"] }
  */
 
 declare(strict_types=1);

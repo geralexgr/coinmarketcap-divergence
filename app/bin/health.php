@@ -31,7 +31,7 @@ $config = load_config(['db_name', 'db_user']);
 $pdo = db_connect($config);
 
 if (!schema_is_present($pdo)) {
-    fwrite(STDERR, "Schema missing. Run: mysql -u USER -p DB < sql/001_init.sql\n");
+    fwrite(STDERR, "Schema missing. Apply docs/schema.sql to the database (phpMyAdmin -> SQL tab, or: mysql -u USER -p DB < docs/schema.sql)\n");
     exit(1);
 }
 
@@ -265,7 +265,7 @@ if (derived_schema_is_present($pdo)) {
     }
 } else {
     echo "\nExtraction\n" . str_repeat('-', 84) . "\n";
-    echo "  Derived tables not migrated yet: mysql -u USER -p DB < sql/002_derived.sql\n";
+    echo "  Derived tables not applied yet — see docs/schema.sql\n";
 }
 
 // --- Verdict ----------------------------------------------------------------

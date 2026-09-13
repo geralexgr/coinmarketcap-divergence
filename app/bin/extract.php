@@ -57,11 +57,11 @@ try {
 }
 
 if (!schema_is_present($pdo)) {
-    fwrite(STDERR, "Schema missing. Run: mysql -u USER -p DB < sql/001_init.sql\n");
+    fwrite(STDERR, "Schema missing. Apply docs/schema.sql to the database (phpMyAdmin -> SQL tab, or: mysql -u USER -p DB < docs/schema.sql)\n");
     exit(3);
 }
 if (!derived_schema_is_present($pdo)) {
-    fwrite(STDERR, "Derived tables missing. Run: mysql -u USER -p DB < sql/002_derived.sql\n");
+    fwrite(STDERR, "Derived tables missing. Schema missing. Apply docs/schema.sql to the database (phpMyAdmin -> SQL tab, or: mysql -u USER -p DB < docs/schema.sql)\n");
     exit(3);
 }
 

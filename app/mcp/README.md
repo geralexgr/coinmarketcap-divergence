@@ -4,7 +4,7 @@
 agent tools.
 
 ```json
-{ "mcpServers": { "divergence": { "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] } } }
+{ "mcpServers": { "divergence": { "command": "php", "args": ["/home/USER/divergence/app/mcp/server.php"] } } }
 ```
 
 No HTTP listener, no port, no framework, and no dependency the shared host has to satisfy: the

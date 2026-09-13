@@ -21,12 +21,12 @@ loses nothing but silently freezes every chart. Both should be noticed the same 
 submission time.
 
 `extract.php` is safe to run while the poller is running — it only ever reads `raw_samples`. A
-parsing fix does not need a separate backfill script: bump `EXTRACTOR_VERSION` in `lib/extract.php`
-and run `php bin/extract.php --rebuild`, which re-reads every payload ever stored and updates the
+parsing fix does not need a separate backfill script: bump `EXTRACTOR_VERSION` in `app/lib/extract.php`
+and run `php app/bin/extract.php --rebuild`, which re-reads every payload ever stored and updates the
 derived rows in place rather than doubling the series.
 
 `score.php` is the same shape as `extract.php` and for the same reason. Change a weight or a range
-in `scoring/inputs.php`, bump `METHOD_VERSION`, run `php bin/score.php --rebuild`, and the whole
+in `app/scoring/inputs.php`, bump `METHOD_VERSION`, run `php app/bin/score.php --rebuild`, and the whole
 history is rescored from rows already stored. The old series stays under its own version rather than
 being overwritten, so a weighting change is visible in the data instead of quietly rewriting the past.
 
@@ -41,6 +41,6 @@ unknown path with **HTTP 200** and `error_code: 500` "The system is busy". Judgi
 its HTTP status alone briefly recorded six non-existent derivatives endpoints as working.
 
 `verify-endpoints.php` then answers the separate question of what the plan permits, and costs about
-6 credits. Its results are encoded in `endpoint_access_results()` in `lib/endpoints.php`, which is
+6 credits. Its results are encoded in `endpoint_access_results()` in `app/lib/endpoints.php`, which is
 the single table that stops the poller scheduling a 403 and stops the scoring layer offering an
 input it cannot get.

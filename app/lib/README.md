@@ -19,7 +19,7 @@ Never judge a CMC response by its HTTP status alone. Two behaviours make the nai
    "The system is busy, please try again later!". Reading the status alone recorded six
    non-existent derivatives endpoints as working.
 2. Path resolution happens before key validation, so an invalid key returns 401 on a real path and
-   404 on a fake one. That is what lets `bin/probe-paths.php` map the API with no key at all.
+   404 on a fake one. That is what lets `app/bin/probe-paths.php` map the API with no key at all.
 
 `cmc_outcome()` reads the body's error code as well as the status and returns one of `ok`,
 `unauthorized`, `forbidden`, `not_found`, `bad_request`, `rate_limited`, `server_error`,

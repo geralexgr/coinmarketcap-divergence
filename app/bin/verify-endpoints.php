@@ -27,12 +27,12 @@ require __DIR__ . '/../lib/endpoints.php';
 $options = getopt('', ['only::', 'save-fixtures', 'out::']);
 $onlyAxis = $options['only'] ?? null;
 $saveFixtures = array_key_exists('save-fixtures', $options);
-$outPath = $options['out'] ?? __DIR__ . '/../docs/endpoint-access.generated.md';
+$outPath = $options['out'] ?? __DIR__ . '/../../docs/endpoint-access.generated.md';
 
 $config = load_config(['cmc_api_key']);
 $limiter = new RateLimiter((int) $config['max_requests_per_minute']);
 
-$fixtureDir = __DIR__ . '/../tests/fixtures/live';
+$fixtureDir = __DIR__ . '/../../tests/fixtures/live';
 if ($saveFixtures && !is_dir($fixtureDir)) {
     mkdir($fixtureDir, 0755, true);
 }
