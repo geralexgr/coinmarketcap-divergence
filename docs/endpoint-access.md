@@ -119,26 +119,50 @@ not ours.
 
 ---
 
-## Host checks — ❓ not yet run on the host
+## Host checks — ✅ run on the cPanel host, 13 September 2026
 
-The verification above was run from a container on a laptop, which answers what the *plan* permits
-but says nothing about what the *host* can reach. Open question 5 — outbound HTTPS from PHP CLI on
-cPanel — is still open, and `bin/preflight.php` has to be run over SSH to close it.
+`php app/bin/preflight.php`, over SSH on the deployment host. Every blocking check passed.
 
-`bin/preflight.php` fills this in. It must be run **on the cPanel host over SSH**, not on a laptop:
-the point is partly to prove the host itself can make these calls (open question 5).
+**This is what closed the last open question.** Everything above was measured from a laptop, which
+answers what the *plan* permits and says nothing about what the *host* can reach — and some shared
+hosts firewall outbound connections from PHP CLI differently from the web SAPI. The
+`Authenticated call from PHP CLI` row is the one that mattered, and it is a 200.
 
 | Check | Result |
 |---|---|
-| Outbound HTTPS from PHP CLI to `pro-api.coinmarketcap.com` | ❓ |
-| PHP CLI binary path and version | ❓ |
-| cPanel cron minimum interval | ❓ |
-| MySQL version and INSERT grant | ❓ |
-| Writable log dir outside webroot | ❓ |
-| Plan tier, credit limit, rate limit (from `/v1/key/info`) | ✅ Basic · 15,000 credits/month · 50 req/min · resets 1 Oct 2026. Key-dependent, not host-dependent, so this row is answered even though the rest are not |
+| PHP CLI binary path | ✅ /opt/alt/php83/usr/bin/php |
+| PHP version | ✅ 8.3.33 (need 8.1+) |
+| SAPI is CLI | ✅ cli |
+| Extension: curl | ✅ loaded |
+| Extension: pdo_mysql | ✅ loaded |
+| Extension: json | ✅ loaded |
+| Extension: openssl | ✅ loaded |
+| Extension: zlib | ✅ loaded |
+| max_execution_time | ✅ unlimited (CLI default) |
+| Config file found | ✅ at the deployment root |
+| API key present | ✅ redacted in output, as it is everywhere |
+| Config is outside the webroot | ✅ yes |
+| DNS resolves `pro-api.coinmarketcap.com` | ✅ 13.227.192.77 |
+| TLS connect to `pro-api.coinmarketcap.com:443` | ✅ connected |
+| **Authenticated call from PHP CLI** | **✅ HTTP 200** |
+| Credits / month | ✅ 14 used of 15,000 |
+| Rate limit / minute | ✅ 50 |
+| MySQL connect | ✅ 10.11.19-MariaDB-cll-lve |
+| MySQL 5.7+ | ✅ 10.11.19-MariaDB-cll-lve |
+| Schema applied | ✅ raw_samples + fetch_log exist |
+| Derived tables applied | ✅ market_metric + asset_metric + scores exist |
+| DB user can INSERT | ✅ yes |
+| Log directory writable | ✅ inside the deployment folder |
 
-The only environment checked so far is a local `php:8.3-cli` container, which proves the code runs
-and reaches the API from somewhere — it says nothing about the host.
+Two things worth carrying into any redeployment:
+
+**The CLI binary is `/opt/alt/php83/usr/bin/php`.** Not `/usr/local/bin/php`, and not the binary the
+web server uses — this host is CloudLinux with per-account PHP selection. Cron's `PATH` is not a
+login shell's, so every cron entry needs that absolute path or it silently runs nothing.
+
+**`Plan tier` reports "unknown".** `/v1/key/info` does not return a tier name on this plan, so the
+tier is inferred from the credit limit rather than read: 15,000/month is Basic. The limit itself is
+reported directly and is what the budget arithmetic uses, so nothing depends on the name.
 
 ## Batching — ❓ open
 

@@ -100,6 +100,8 @@ first thing to build if credits get tight. See [D15](decisions.md).
 | Does `global-metrics` carry derivative volume? | Yes | Live payload inspection |
 | Does `market-pairs/latest` carry open interest? | Unanswerable — 403 on this plan | Verifier |
 | Do the per-asset endpoints accept id batches? | Yes, 100 ids in one call | `quotes_asset_count` per sample |
+| Can PHP CLI on the host reach the API? | Yes — HTTP 200 from the cPanel host | `app/bin/preflight.php` over SSH |
+| Which PHP binary does cron need? | `/opt/alt/php83/usr/bin/php`, not the web server's | preflight reports the resolved path |
 
 The historical fear-and-greed endpoint returns its list **newest first**. An earlier version of the
 extractor took the last element, which is the *oldest* point — sixteen months stale and entirely
