@@ -33,6 +33,9 @@ const DIVERGENCE_DEFAULTS = [
     'cmc_base_url'            => 'https://pro-api.coinmarketcap.com',
     'db_host'                 => 'localhost',
     'db_port'                 => 3306,
+    // Resolved in apply_config_defaults() to <deployment root>/logs/divergence.log, so a
+    // deployment is one self-contained folder with nothing to create by hand. Set an
+    // absolute path to override, or false to disable file logging entirely.
     'log_path'                => null,
     'asset_universe'          => 100,
     'request_timeout'         => 10,
@@ -43,14 +46,67 @@ const DIVERGENCE_DEFAULTS = [
 ];
 
 /**
+ * The deployment root — the directory holding app/ and public/.
+ *
+ * Two levels up, not one: this file is app/lib/config.php, so dirname(__DIR__) is app/.
+ * Getting this wrong would search for the config inside app/, and would put the log file
+ * there too.
+ */
+function divergence_root(): string
+{
+    return dirname(dirname(__DIR__));
+}
+
+/**
+ * Defaults, plus the paths that can only be known once the root is.
+ *
+ * `log_path` defaults to `<root>/logs/divergence.log` so everything a deployment writes
+ * stays inside the deployment folder. On shared hosting that matters: a folder you can
+ * delete in one action is a deployment you can remove in one action, and nothing is left
+ * scattered around the home directory afterwards.
+ *
+ * @param array<string,mixed> $config
+ * @return array<string,mixed>
+ */
+function apply_config_defaults(array $config, string $foundPath): array
+{
+    $config = array_merge(DIVERGENCE_DEFAULTS, $config);
+    $config['_config_path'] = $foundPath;
+
+    if ($config['log_path'] === null) {
+        $config['log_path'] = divergence_root() . '/logs/divergence.log';
+    }
+
+    return $config;
+}
+
+/**
+ * Create the log directory if it is not there yet.
+ *
+ * Called by the writers, never by the web app. One less manual step in a runbook is one
+ * less step to get wrong, and a missing log directory otherwise fails silently: the
+ * write is suppressed, so the poller runs correctly and logs nothing.
+ *
+ * @param array<string,mixed> $config
+ */
+function ensure_log_dir(array $config): void
+{
+    if (empty($config['log_path'])) {
+        return;
+    }
+
+    $dir = dirname((string) $config['log_path']);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+}
+
+/**
  * @return string[] The paths that will be searched, in order.
  */
 function config_candidate_paths(): array
 {
-    // Two levels up, not one: this file is app/lib/config.php, so dirname(__DIR__) is
-    // app/ and the repo root is above that. Getting this wrong would search inside the
-    // repo for a file whose whole purpose is to live outside it.
-    $repoRoot = dirname(dirname(__DIR__));
+    $repoRoot = divergence_root();
     $paths = [];
 
     $fromEnv = getenv('DIVERGENCE_CONFIG');
@@ -97,8 +153,7 @@ function load_config(array $required = ['cmc_api_key', 'db_name', 'db_user']): a
         exit(2);
     }
 
-    $config = array_merge(DIVERGENCE_DEFAULTS, $config);
-    $config['_config_path'] = $found;
+    $config = apply_config_defaults($config, $found);
 
     $missing = [];
     foreach ($required as $key) {
@@ -131,9 +186,7 @@ function try_load_config(): array
         if (!is_array($config)) {
             return [null, "Config at {$path} did not return an array."];
         }
-        $config = array_merge(DIVERGENCE_DEFAULTS, $config);
-        $config['_config_path'] = $path;
-        return [$config, null];
+        return [apply_config_defaults($config, $path), null];
     }
 
     return [null, 'No config file found.'];

@@ -31,6 +31,7 @@ $verbose = $once || array_key_exists('verbose', $options);
 $quiet   = array_key_exists('quiet', $options) && !$verbose;
 
 $config = load_config($dryRun ? ['cmc_api_key'] : ['cmc_api_key', 'db_name', 'db_user']);
+ensure_log_dir($config);
 $runId  = new_run_id();
 
 /** Everything the run says goes through here, so cron output and the log file match. */
