@@ -121,12 +121,34 @@ If those three succeed, open the site. It will show a single point.
 
 cPanel → Cron Jobs. Four entries. Replace `/usr/local/bin/php` with whatever `which php` printed.
 
+Write them to a file and install from it, rather than editing the crontab in place. A crontab is
+one command away from being empty, and `crontab -l | ... | crontab -` in a single pipeline can
+truncate it before the read completes:
+
+```bash
+cat > ~/divergence-crontab.txt <<'CRON'
+MAILTO=""
+PATH=/usr/local/bin:/usr/bin:/bin
+
+1-59/15 * * * *  php /home/USER/divergence/app/poller/run.php --market >> /home/USER/divergence/logs/cron.log 2>&1
+11-59/15 * * * * php /home/USER/divergence/app/poller/run.php --assets >> /home/USER/divergence/logs/cron.log 2>&1
+7,27,47 * * * *  php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
+12,42 * * * *    php /home/USER/divergence/app/bin/score.php --quiet --limit=500 >> /home/USER/divergence/logs/cron.log 2>&1
+CRON
+
+crontab ~/divergence-crontab.txt && crontab -l
 ```
-*/10 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --market  >> /home/USER/divergence/logs/cron.log 2>&1
-*/30 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --assets  >> /home/USER/divergence/logs/cron.log 2>&1
-7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
-12,42 * * * *   /usr/local/bin/php /home/USER/divergence/app/bin/score.php --quiet --limit=500     >> /home/USER/divergence/logs/cron.log 2>&1
-```
+
+Keeping the file means the crontab can always be restored in one command, and changing it later is
+an edit plus a reinstall rather than a live edit of the only copy.
+
+**Why 15-minute schedules with odd offsets rather than `*/15`.** Shared hosts often enforce a
+minimum interval and rewrite anything faster — ours replaced `*/5` with `*/15`, then redistributed
+to `1-59/15` and `11-59/15` so the two pollers do not start in the same minute, appending a comment
+to the crontab each time it did so. Writing it in the form the host already accepts stops it
+rewriting, and staggering the pollers is good practice anyway on an account with a process limit.
+
+If your host has no such monitor, `*/15` and `*/15` work identically.
 
 Everything stays inside the deployment folder. `logs/` is created on the first run, so there is
 nothing to make by hand — but note the cron redirect is the shell's, not the app's, so the very
