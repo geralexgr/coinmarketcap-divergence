@@ -74,13 +74,26 @@
         Math.round(last.voice) + ', money ' + Math.round(last.money) + '.'
     });
 
-    // The tint marks where the point currently is, so the reading is visible before any
-    // label is read.
+    /* The tint marks where the point currently is, so the reading is visible before any
+     * label is read.
+     *
+     * The geometry, which was wrong here until 13 Sep 2026 and is worth spelling out:
+     * y is Voice and grows UPWARD (py inverts it), x is Money and grows RIGHT. So the
+     * top half is high Voice and the right half is high Money, and the two off-diagonal
+     * quadrants are the easy ones to swap —
+     *
+     *   top-left     high Voice, low  Money  = chatter without conviction
+     *   top-right    high Voice, high Money  = loud and leveraged
+     *   bottom-left  low  Voice, low  Money  = apathy
+     *   bottom-right low  Voice, high Money  = quiet, but leveraged
+     *
+     * which is exactly the table in docs/method.md and exactly what quadrant_of() in
+     * app/scoring/score.php returns. */
     var tint = {
-      quiet:   { x: L, y: T },
+      chatter: { x: L, y: T },
       loud:    { x: (L + R) / 2, y: T },
       apathy:  { x: L, y: (T + B) / 2 },
-      chatter: { x: (L + R) / 2, y: (T + B) / 2 }
+      quiet:   { x: (L + R) / 2, y: (T + B) / 2 }
     }[live];
     svg.appendChild(el('rect', {
       x: tint.x, y: tint.y, width: (R - L) / 2, height: (B - T) / 2, class: 'qfill'
@@ -91,10 +104,10 @@
     svg.appendChild(el('line', { x1: L, y1: (T + B) / 2, x2: R, y2: (T + B) / 2, class: 'qdash' }));
 
     [
-      ['Quiet, but leveraged',       L + 10,             T + 16, 'quiet'],
+      ['Chatter without conviction', L + 10,             T + 16, 'chatter'],
       ['Loud and leveraged',         (L + R) / 2 + 10,   T + 16, 'loud'],
       ['Apathy',                     L + 10,             B - 8,  'apathy'],
-      ['Chatter without conviction', (L + R) / 2 + 10,   B - 8,  'chatter']
+      ['Quiet, but leveraged',       (L + R) / 2 + 10,   B - 8,  'quiet']
     ].forEach(function (q) {
       svg.appendChild(el('text', {
         x: q[1], y: q[2], class: 'qname' + (q[3] === live ? ' live' : '')
