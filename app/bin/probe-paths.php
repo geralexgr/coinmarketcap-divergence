@@ -113,8 +113,15 @@ function candidate_paths(): array
 {
     $paths = array_map(static fn(array $e): string => $e['path'], endpoint_catalogue());
 
+    // Sweep every version prefix, not only the ones this project already uses.
+    //
+    // The original sweep stopped at v4 because nothing here lived under v5, and it
+    // therefore "proved" that no derivatives endpoint existed anywhere on the API. The
+    // whole family is under /v5/ (D20). A probe whose search space is defined by what is
+    // already believed can only ever confirm the belief, so the range now runs past the
+    // versions in use and the shapes include the ones that were actually found.
     $derivativeShapes = [];
-    foreach (['v1', 'v2', 'v3', 'v4'] as $version) {
+    foreach (['v1', 'v2', 'v3', 'v4', 'v5', 'v6'] as $version) {
         foreach ([
             'derivatives/listings/latest',
             'derivatives/quotes/latest',
@@ -124,6 +131,19 @@ function candidate_paths(): array
             'derivatives/liquidations/latest',
             'futures/listings/latest',
             'perpetuals/listings/latest',
+            // Confirmed present under v5 on 13 Sep 2026. Probed at every version anyway,
+            // so the day CoinMarketCap moves them the sweep says so instead of the
+            // poller quietly recording 404s.
+            'cryptocurrency/derivatives/market-pairs/list/latest',
+            'derivatives/liquidations/cryptocurrency/list/latest',
+            'derivatives/liquidations/cryptocurrency/quotes/latest',
+            'exchange/derivatives/list',
+            // Neighbouring families seen in use elsewhere. Cheap to include, and their
+            // absence from the original list is exactly how v5 was missed.
+            'real-world-assets/assets/list',
+            'real-world-assets/quotes/latest',
+            'altcoin-season-index/latest',
+            'cryptocurrency/categories',
         ] as $shape) {
             $derivativeShapes[] = "/{$version}/{$shape}";
         }

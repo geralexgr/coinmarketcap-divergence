@@ -58,12 +58,32 @@ rather than as quietly wrong results.
 
 ---
 
-## Money axis — settled, and not the way this design assumed
+## Money axis — the derivatives family, found under /v5/
 
-**There is no derivatives data on the CoinMarketCap API.** 38 candidate paths probed on
-12 September 2026 across `/v1/` through `/v4/`: funding rate, open interest, liquidations,
-futures, perpetuals, derivatives listings, derivatives quotes, derivatives exchanges. Every one
-absent. Not 403 — absent. No plan upgrade produces them.
+**Corrected 13 September 2026.** This section previously stated that the CoinMarketCap API carries
+no derivatives data at all. It was wrong, and [D20](decisions.md) records how.
+
+The derivatives endpoints exist and are callable on this key:
+
+| Path | Access | Carries |
+|---|---|---|
+| `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | ✅ 200 | `open_interest`, `funding_rate`, `index_basis` per pair. One symbol per call. |
+| `/v5/derivatives/liquidations/cryptocurrency/list/latest` | ✅ 200 | long/short liquidations at 1h, 4h, 24h — 100 assets for 1 credit |
+| `/v5/exchange/derivatives/list` | ✅ 200 | per-venue derivative volume and open interest |
+| `/v5/derivatives/liquidations/cryptocurrency/quotes/latest` | ⛔ | absent |
+
+Measured on 13 September 2026: BTC open interest **$76.6bn**, open-interest-weighted funding
+**+0.0043%**, 24h liquidations **$188m** of which **60% were longs**, and **$196bn** of open
+interest across 50 venues.
+
+### What the original probe found, and why it was wrong
+
+The sweep below is accurate for the paths it covered. It swept `/v1/` through `/v4/` and concluded
+the family did not exist anywhere — but the search space was built from version prefixes this
+project already used, so it could only ever confirm what was already believed. The prober now
+sweeps `/v1/` to `/v6/`.
+
+Every path in this table really is absent at the versions probed:
 
 | Path | Exists | Note |
 |---|---|---|

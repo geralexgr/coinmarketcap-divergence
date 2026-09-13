@@ -6,6 +6,11 @@
  *     php poller/run.php --assets          # every 15 minutes, via cron
  *     php poller/run.php --once            # market scope, verbose, for a human
  *     php poller/run.php --once --dry-run  # fetch and report, write nothing
+ *     php poller/run.php --market --force  # ignore per-endpoint cadence, fetch everything
+ *
+ * Cron runs this every 5 minutes; each endpoint carries its own interval in
+ * lib/endpoints.php and only the ones actually due go out. That is what pays for
+ * 15-minute open-interest sampling inside a 15,000 credit month.
  *
  * What it does and nothing more: call each confirmed endpoint, store the response
  * body verbatim with the time it actually arrived, and log the attempt either way.
@@ -22,7 +27,7 @@ require __DIR__ . '/../lib/http.php';
 require __DIR__ . '/../lib/db.php';
 require __DIR__ . '/../lib/endpoints.php';
 
-$options = getopt('', ['market', 'assets', 'once', 'dry-run', 'verbose', 'quiet']);
+$options = getopt('', ['market', 'assets', 'once', 'dry-run', 'verbose', 'quiet', 'force']);
 
 $scope   = array_key_exists('assets', $options) ? 'asset' : 'market';
 $dryRun  = array_key_exists('dry-run', $options);
@@ -78,6 +83,52 @@ $endpoints = endpoints_to_poll($config, $scope);
 if ($endpoints === []) {
     $log('no endpoints configured for this scope', true);
     exit(3);
+}
+
+// ---------------------------------------------------------------------------
+// Per-endpoint cadence.
+//
+// One interval for the whole scope wasted most of the budget: the fear and greed index
+// updates once a day and was being fetched every tick for an identical value, while the
+// leverage inputs genuinely move minute to minute. Each endpoint now carries its own
+// every_minutes and this run fetches only what is due.
+//
+// The schedule lives in raw_samples rather than in a state file, so it survives a
+// redeploy and a cleared temp directory: what was recorded IS the schedule state.
+//
+// Cron therefore runs this every 5 minutes and the catalogue decides what actually goes
+// out — which is what keeps 15-minute leverage sampling inside a 15,000 credit budget.
+// ---------------------------------------------------------------------------
+if ($pdo !== null && !array_key_exists('force', $options)) {
+    $lastSuccess = last_success_times($pdo);
+    $now = time();
+    $due = [];
+    $waiting = [];
+
+    foreach ($endpoints as $entry) {
+        $last = $lastSuccess[$entry['key']] ?? null;
+        if ($last === null) {
+            $due[] = $entry;
+            continue;
+        }
+        $ageMinutes = ($now - strtotime($last . ' UTC')) / 60;
+        // A minute of slack, so a run at 14:59:58 does not defer an endpoint that came
+        // due at 15:00:00 to the following tick and halve its real cadence.
+        if ($ageMinutes >= (int) $entry['every_minutes'] - 1) {
+            $due[] = $entry;
+        } else {
+            $waiting[] = sprintf('%s (%dm of %dm)', $entry['key'], (int) $ageMinutes, (int) $entry['every_minutes']);
+        }
+    }
+
+    if ($waiting !== []) {
+        $log('not due yet: ' . implode(', ', $waiting));
+    }
+    if ($due === []) {
+        $log('nothing due this tick');
+        exit(0);
+    }
+    $endpoints = $due;
 }
 
 $limiter = new RateLimiter((int) $config['max_requests_per_minute']);

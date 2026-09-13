@@ -138,3 +138,29 @@ test('LIVE a 403 payload is skipped, not read as data', function (): void {
         );
     }
 });
+
+test('LIVE derivative pairs carry open interest and a funding rate', function (): void {
+    $body = live_fixture('derivatives_pairs');
+    if ($body === null) { return; }
+    $r = extract_sample('derivatives_pairs', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_same('ok', $r['status'], 'the real payload parses');
+    assert_true(($m['open_interest'] ?? 0) > 1e9, 'BTC open interest is in the billions, not a rounding error');
+    assert_true(isset($m['funding_rate']), 'a funding rate was derived');
+    assert_true(abs($m['funding_rate']) < 0.01, 'and it is a per-interval rate, not a percentage in disguise');
+});
+
+test('LIVE liquidations carry both sides and a believable total', function (): void {
+    $body = live_fixture('liquidations');
+    if ($body === null) { return; }
+    $r = extract_sample('liquidations', $body);
+    $m = [];
+    foreach ($r['market'] as $row) { $m[$row['metric']] = $row['value']; }
+
+    assert_same('ok', $r['status'], 'the real payload parses');
+    assert_true(($m['liquidations_24h'] ?? 0) > 0, 'there were liquidations');
+    $share = $m['liquidation_long_share'] ?? -1;
+    assert_true($share >= 0 && $share <= 1, 'the long share is a share, between 0 and 1');
+});

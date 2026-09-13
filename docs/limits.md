@@ -22,22 +22,21 @@ had gone quiet. So the market screen says it, on the chart.
 `app/scoring/inputs.php` at their intended weights and gated on `endpoint_access_results()` in
 `app/lib/endpoints.php` — one verification run turns them on. See [D16](decisions.md).
 
-## There are no derivatives endpoints at all
+## Open interest is BTC only
 
-38 candidate paths probed across `/v1/` to `/v4/` — funding rate, open interest, liquidations,
-futures, perpetuals, derivatives listings, quotes and exchanges. **Every one absent.** Not 403: the
-paths do not resolve, so no plan upgrade produces them. Reproduce with `php app/bin/probe-paths.php`,
-which needs no key and costs no credits.
+The derivatives endpoint takes **one symbol per call** — a comma-separated list is rejected — so
+covering a hundred assets would cost a hundred credits per sample against a 15,000 credit month.
+BTC alone stands for market-wide leverage.
 
-**What it means for the product:** the Money axis measures money *moving* and money *at rest*, not
-money *committed and leveraged*. Turnover cannot distinguish a large spot rotation from a leveraged
-build-up, because nothing in the available data carries leverage. The axis is weaker than the one
-this product was designed around, and the method page says so in those words.
+That is the standard benchmark and it is what the funding-rate literature uses, but it is a real
+limit: a leverage build concentrated in altcoins would show up here late and muted. Liquidations do
+not have this problem — that endpoint returns 100 assets for a single credit, so the liquidation
+inputs are genuinely market-wide.
 
-**The partial exception:** `global-metrics` carries `derivatives_volume_24h`, so the share of the
-day's activity happening in contracts rather than in the asset is reachable — measured at 7.4× spot
-volume on 13 September 2026. It is still a volume figure: it says how much was traded, never how much
-is held. See [D10](decisions.md).
+**This section used to say there were no derivatives endpoints at all.** That was wrong for one day:
+the original probe swept `/v1/` to `/v4/` and the family lives under `/v5/`. The correction, and how
+the mistake happened, is [D20](decisions.md). The prober now sweeps past the versions in use so the
+same class of miss cannot recur.
 
 ## The per-asset Voice axis is a price-derived proxy
 

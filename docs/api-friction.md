@@ -27,7 +27,7 @@ SELECT endpoint, http_status, count(*) n, min(attempted_at), max(attempted_at)
 
 ## Entries
 
-### 12 September 2026 — the Money axis had no data behind it
+### 12 September 2026 — the Money axis had no data behind it (superseded — see 13 September, below)
 
 **What we wanted:** funding rates, open interest and liquidations. The Money axis was designed
 around them, and they are the half of the product CoinMarketCap's own site cannot show alongside
@@ -44,10 +44,12 @@ Absent, which no upgrade fixes.
 **What we did instead:** rebuilt the Money axis from turnover (`volume_24h / market_cap`), volume
 concentration across exchanges, and exchange reserve movement — decision D10.
 
-**What it cost:** the axis now measures money *moving* rather than money *committed and leveraged*.
-Turnover cannot distinguish a large spot rotation from a leveraged build-up, because nothing in the
-available data carries leverage. The method page states this in those words rather than implying a
-precision the inputs do not have.
+**What it cost:** for one day, the axis measured money *moving* rather than money *committed and
+leveraged*.
+
+**What was actually wrong:** the endpoints exist. They are under `/v5/`, and this probe swept `/v1/`
+to `/v4/`. The entry dated 13 September below is the correction, and it is the more useful of the
+two.
 
 ### 12 September 2026 — an unknown path answers HTTP 200
 
@@ -139,3 +141,47 @@ heaviest input on the Money axis.
 anyone called `/v1/key/info`. That call is free, takes one second, and would have reshaped the
 product before it was designed rather than after. It is now the first endpoint in the catalogue and
 the first thing `app/bin/preflight.php` reports.
+
+---
+
+### 13 September 2026 — the endpoints were there all along, one version prefix away
+
+**What we wanted:** to be right about the entry above.
+
+**What happened:** the CoinMarketCap API does carry funding rates, open interest and liquidations.
+They live under `/v5/`:
+
+- `/v5/cryptocurrency/derivatives/market-pairs/list/latest` — `open_interest`, `funding_rate`,
+  `index_basis`, per derivative pair
+- `/v5/derivatives/liquidations/cryptocurrency/list/latest` — long and short liquidations at 1h, 4h
+  and 24h, 100 assets for one credit
+- `/v5/exchange/derivatives/list` — per-venue derivative volume and open interest
+
+All three answer 200 on the same key that had been called limited. The 12 September probe swept
+`/v1/` to `/v4/`.
+
+**Evidence:** the same 401-versus-404 method as the original probe, controls included and behaving.
+Fixtures for all three payloads are in `tests/fixtures/live/`, and the numbers they produced on the
+day are in `docs/endpoint-access.md`.
+
+**What we did instead:** rebuilt the Money axis on the inputs it was designed for — `method_version`
+2, with the substitutes kept at weight zero so the two versions stay comparable.
+
+**How it was found, which is the point of this entry:** not by re-probing. By reading a competing
+hackathon entry's README and noticing it called endpoints this repo had documented as non-existent.
+
+**The friction, honestly stated.** Some of this is ours: a probe whose candidate list is built from
+the version prefixes a project already uses cannot discover a family living somewhere else, and that
+is a methodology error rather than an API one.
+
+But some of it is the API's. There is no published index of endpoint families by version, the
+documentation a search engine surfaces is heavily `/v1/`-weighted, and `/v1/key/info` reports a
+credit limit and a rate limit but **no tier name and no list of what the key may call**. The only
+way to learn what is reachable is to call it. That is why this repo probes rather than reads, why
+`endpoint_access_results()` is a measured table rather than a copied one — and why the lesson from
+12 September, "call it rather than assume", was right in principle and still insufficient in
+practice, because it was applied only to paths already imagined.
+
+**What changed so it cannot recur:** `app/bin/probe-paths.php` sweeps `/v1/` through `/v6/` for every
+path family rather than only the versions in use, and includes neighbouring families seen elsewhere.
+96 paths instead of 32.

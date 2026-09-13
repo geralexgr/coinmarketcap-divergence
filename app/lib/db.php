@@ -117,6 +117,32 @@ function insert_fetch_log(
     return (int) $pdo->lastInsertId();
 }
 
+/**
+ * When each endpoint was last recorded successfully.
+ *
+ * Drives per-endpoint cadence in the poller. Read from raw_samples rather than kept in a
+ * file, because the schedule then survives a restart, a redeploy and a cleared temp
+ * directory — the record of what happened is the same thing as the schedule state.
+ *
+ * @return array<string,string> endpoint => UTC datetime
+ */
+function last_success_times(PDO $pdo): array
+{
+    $rows = $pdo->query(
+        'SELECT endpoint, MAX(fetched_at) AS last_at
+           FROM raw_samples
+          WHERE http_status = 200
+       GROUP BY endpoint'
+    )->fetchAll();
+
+    $out = [];
+    foreach ($rows as $row) {
+        $out[(string) $row['endpoint']] = (string) $row['last_at'];
+    }
+
+    return $out;
+}
+
 /** True when the recording core exists. Checked before the first write, not after. */
 function schema_is_present(PDO $pdo): bool
 {

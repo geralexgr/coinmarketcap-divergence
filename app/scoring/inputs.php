@@ -30,10 +30,15 @@ declare(strict_types=1);
  * one already recorded. The method page prints both, and the trail does not silently
  * become a different measurement halfway along.
  *
- * 1 — first published method, 13 Sep 2026. Voice is fear and greed alone; every other
- *     Voice endpoint is forbidden on this plan.
+ * 1 — first published method, 13 Sep 2026. Voice is fear and greed alone; Money is
+ *     turnover and its substitutes, because the leverage endpoints were believed absent.
+ * 2 — the Money axis as it was always meant to be. Open interest, funding rate and
+ *     liquidations are real, reachable and callable (D20), so the axis now measures money
+ *     *committed and at risk* rather than money changing hands. The substitutes that stood
+ *     in for them are kept at weight zero rather than deleted, so the history of what the
+ *     axis used to be stays legible.
  */
-const METHOD_VERSION = 1;
+const METHOD_VERSION = 2;
 
 /**
  * How long the fixed reference ranges are used before percentile ranking takes over.
@@ -119,16 +124,31 @@ function voice_inputs_market(): array
 /**
  * Money, market-wide — what the market has committed.
  *
- * **Read this before trusting the axis.** It was designed around funding rates, open
- * interest and liquidations. None of those exist on the CoinMarketCap API at any
- * version — 38 paths probed, all absent (D10). What is here measures money *moving* and
- * money *at rest*, not money *committed and leveraged*. Those are different things.
+ * **This axis was rebuilt on 13 September 2026 and the rebuild is the point.** It was
+ * designed around funding rates, open interest and liquidations; D10 recorded them as
+ * absent from the CoinMarketCap API after probing 38 paths, and the axis was rebuilt
+ * around turnover as a weaker substitute — money *moving* rather than money *committed*.
  *
- * `derivatives_to_spot` is the partial exception and the reason D10 is amended rather
- * than final: global-metrics does carry derivative volume, so the share of the day's
- * activity happening in contracts rather than in the asset is reachable. It is a
- * volume figure, not a position figure — it says how much was traded, never how much is
- * still held — but it is the only genuinely positioning-shaped number on this API.
+ * That was wrong. The probe covered /v1/ to /v4/ and the derivatives family lives under
+ * /v5/. Every input the axis originally wanted is real and callable on this plan (D20),
+ * so the substitutes step aside for the measurements they were standing in for.
+ *
+ * What the axis now measures, in order of weight:
+ *
+ *  - **Open interest** — dollars currently committed to derivative positions. Not volume:
+ *    a level, held right now, which is the single most direct answer to "how much money
+ *    is at risk in this market".
+ *  - **Funding rate** — what it costs per interval to hold a long. Positive means longs
+ *    are paying shorts, which is what a crowded long side looks like from the inside.
+ *    Weighted by each pair's open interest, so a dead venue cannot outvote Binance.
+ *  - **Liquidations** — positions closed by force rather than by choice. The only figure
+ *    in the whole API that is unambiguously money under stress.
+ *  - **Turnover** and **OI-to-volume** — money moving, and how much of that movement
+ *    became a held position rather than churn.
+ *
+ * The four substitutes below it are kept at weight zero rather than deleted. They are the
+ * record of what this axis was for its first day, and `method_version` on every score row
+ * says which of the two produced it.
  *
  * @return array<int,array<string,mixed>>
  */
@@ -136,39 +156,76 @@ function money_inputs_market(): array
 {
     return [
         scoring_input(
-            'market_turnover', 'Turnover', 'global_metrics',
-            0.005, 0.05, 0.35, 'volume / market cap',
-            'Total 24h volume over total market cap: money moving relative to the size of '
-            . 'the thing it is moving in. The range spans the quiet and busy days measured '
-            . 'in the first week of recording.'
+            'open_interest', 'Open interest', 'derivatives_pairs',
+            4.0e10, 1.2e11, 0.30, 'USD held in open positions',
+            'Dollars committed to derivative positions on BTC right now, summed across every '
+            . 'venue CoinMarketCap tracks. Measured at $76.6bn on 13 Sep 2026. A level, not a '
+            . 'flow: this is the number the axis was always supposed to be built on.'
         ),
         scoring_input(
+            'funding_rate', 'Funding rate', 'derivatives_pairs',
+            -0.0003, 0.0008, 0.20, 'per funding interval',
+            'What longs pay shorts to keep a perpetual open, weighted by each pair\'s open '
+            . 'interest. Positive means the long side is crowded enough to pay for the '
+            . 'privilege. Measured at +0.0043% on 13 Sep 2026.'
+        ),
+        scoring_input(
+            'liquidations_24h', 'Liquidations, 24h', 'liquidations',
+            5.0e7, 1.5e9, 0.20, 'USD closed by force',
+            'Positions closed by the exchange rather than by their owner, across the top 100 '
+            . 'assets. Money that was committed and then taken off the table involuntarily — '
+            . 'the clearest evidence in the API that leverage was actually there.'
+        ),
+        scoring_input(
+            'oi_to_volume', 'Open interest vs volume', 'derivatives_pairs',
+            0.3, 1.5, 0.15, 'ratio',
+            'Open interest over 24h derivative volume: how much of the day\'s trading turned '
+            . 'into positions still being held rather than churn. High means the market is '
+            . 'carrying what it bought.'
+        ),
+        scoring_input(
+            'market_turnover', 'Turnover', 'global_metrics',
+            0.005, 0.05, 0.15, 'volume / market cap',
+            'Total 24h volume over total market cap: money moving relative to the size of the '
+            . 'thing it is moving in. Demoted from the headline input now that the axis can '
+            . 'measure commitment directly, but still the broadest measure of activity.'
+        ),
+
+        // --- Superseded by the four above. Declared, not deleted: these are what the
+        // --- axis was built from under method_version 1, and a reader comparing an old
+        // --- score to a new one should be able to see exactly what changed.
+        scoring_input(
             'derivatives_to_spot', 'Derivative share of activity', 'global_metrics',
-            2.0, 12.0, 0.30, 'x spot volume',
-            'Derivative volume against spot volume. Measured at 7.4x on 13 Sep 2026. The '
-            . 'closest this API gets to a leverage reading, and it is still a volume '
-            . 'figure: it says how much was traded in contracts, never how much is held.'
+            2.0, 12.0, 0.00, 'x spot volume',
+            'Derivative volume against spot volume. The closest thing to a leverage reading '
+            . 'available before the real ones were found. Superseded by open interest, which '
+            . 'measures positions held rather than contracts traded.'
         ),
         scoring_input(
             'stablecoin_volume_share', 'Stablecoin share of volume', 'global_metrics',
-            0.5, 1.2, 0.20, 'share of total volume',
-            'What fraction of the day\'s volume is stablecoins changing hands rather than '
-            . 'risk being taken. Inverted: a high stablecoin share is money standing still.',
+            0.5, 1.2, 0.00, 'share of total volume',
+            'A proxy for how much of the day\'s volume was risk rather than rotation. '
+            . 'Superseded: funding and open interest answer that directly.',
             true
         ),
         scoring_input(
             'exchange_reserve_change', 'Exchange reserve movement', 'exchange_assets',
-            0.0, 0.04, 0.15, 'absolute 24h change',
-            'How much the reserve held on the tracked exchange moved, in either direction. '
-            . 'Repositioning, not direction — the method makes no claim about which way '
-            . 'money leaving an exchange points.'
+            0.0, 0.04, 0.00, 'absolute 24h change',
+            'Movement in the reserve held on the tracked exchange. Superseded by liquidations, '
+            . 'which measure positioning being unwound rather than balances being shuffled.'
         ),
         scoring_input(
-            'exchange_hhi', 'Exchange concentration', 'exchange_listings',
+            'derivative_exchange_hhi', 'Derivative venue concentration', 'derivatives_exchanges',
+            0.02, 0.30, 0.00, 'HHI',
+            'Concentration of derivative volume across venues — the replacement for the '
+            . 'forbidden spot equivalent. Recorded every hour but not yet scored: the '
+            . 'reference range should come from measured history, not instinct.'
+        ),
+        scoring_input(
+            'exchange_hhi', 'Spot venue concentration', 'exchange_listings',
             0.05, 0.35, 0.00, 'HHI',
-            'Concentration of volume across venues. Forbidden on this plan; declared at '
-            . 'weight zero so it is visible as a designed input rather than reappearing '
-            . 'unannounced if access changes.'
+            'Concentration of spot volume across venues. Forbidden on this plan; kept so the '
+            . 'designed input is visible rather than silently absent.'
         ),
     ];
 }

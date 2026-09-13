@@ -3,42 +3,69 @@
 # public/ is the only directory served over HTTP. The config file, the poller, the
 # scoring layer and every raw payload sit above it and are unreachable by request.
 #
-# Apache on cPanel is the target. A host running nginx needs the equivalent in the
-# server block; the deploy runbook says so.
-
-# ---------------------------------------------------------------------------
-# Only the entry points are reachable.
-# ---------------------------------------------------------------------------
+# Written for Apache AND LiteSpeed, which is what cPanel actually runs. An earlier
+# version of this file used <LimitExcept GET HEAD> and a FilesMatch alternation
+# containing ^\. — under LiteSpeed that combination returned 403 for every request,
+# including static files and paths that did not exist. Both are gone. The rule of thumb
+# that replaced them: deny by explicit filename, never by clever pattern, and let PHP
+# handle the method check rather than the web server.
 #
-# bootstrap.php lives in this directory because every page includes it, but it is not
-# an entry point: requested directly it would run with no page around it. Blocking it
-# by name is cheaper and clearer than moving it and rewriting eight include paths.
-<FilesMatch "^bootstrap\.php$">
-    Require all denied
-</FilesMatch>
-
-# Nothing here should ever be fetched, and a stray copy left by an editor or a merge
-# is exactly the kind of thing that leaks a key.
-<FilesMatch "\.(sql|md|log|ini|sh|bak|orig|rej|swp|dist|example)$|^\.|~$">
-    Require all denied
-</FilesMatch>
+# Every Require is wrapped in an IfModule so a server without mod_authz_core skips the
+# block instead of failing the whole directory.
 
 # ---------------------------------------------------------------------------
-# No directory listings. The assets directory would otherwise be browsable.
+# bootstrap.php is included by every page but is not itself an entry point.
 # ---------------------------------------------------------------------------
+<Files "bootstrap.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Files>
+
+# ---------------------------------------------------------------------------
+# Nothing here should ever be fetched. Explicit extensions only — a stray copy left
+# by an editor or a merge is exactly the kind of thing that leaks a key.
+# ---------------------------------------------------------------------------
+<FilesMatch "\.(sql|md|log|ini|sh|bak|orig|rej|swp|save|dist|example|yml|yaml|lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Dotfiles, by name rather than by pattern.
+<FilesMatch "^\.(htaccess|htpasswd|env|git.*)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# No directory listings — the assets directory would otherwise be browsable.
 Options -Indexes
+
+DirectoryIndex index.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    # Tidy URLs: /market, /assets, /method. The .php forms keep working, so a link
-    # written either way resolves.
+    # Tidy URLs. The .php forms keep working, so a link written either way resolves.
     RewriteRule ^market/?$   index.php  [L]
     RewriteRule ^assets/?$   assets.php [L]
     RewriteRule ^method/?$   method.php [L]
 </IfModule>
 
 <IfModule mod_headers.c>
-    # The app loads no third-party script, font, or stylesheet — the chart is hand-drawn
+    # The app loads no third-party script, font or stylesheet — the chart is hand-drawn
     # SVG rather than a charting library — so the policy can be this tight.
     Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     Header always set X-Content-Type-Options "nosniff"
@@ -51,9 +78,3 @@ Options -Indexes
     ExpiresByType text/css "access plus 7 days"
     ExpiresByType application/javascript "access plus 7 days"
 </IfModule>
-
-# The database is read-only from here and there is no write path in the app at all,
-# but a POST to a page that only ever reads is still a request nobody meant to make.
-<LimitExcept GET HEAD>
-    Require all denied
-</LimitExcept>
