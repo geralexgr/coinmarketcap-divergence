@@ -136,9 +136,15 @@ first cron tick needs the directory to exist. Running step 7 by hand first creat
 the one the web server uses — on CloudLinux hosts it is typically `/opt/alt/php83/usr/bin/php`.
 Use whatever `which php` printed in step 6.
 
-**Do not raise the cadence.** It is set by the credit budget, not by preference: 10 and 30 minutes
-costs about 624 credits a day against a 15,000/month plan. The 5-minute cadence exhausts the budget
-in twelve days and the poller stops mid-hackathon.
+**The cadence is not set here.** Each endpoint carries its own interval in `app/lib/endpoints.php`;
+these entries are just a cheap tick that decides what is due. Most ticks fetch nothing and cost
+nothing. 404 credits a day against a 15,000/month plan.
+
+**Your host may rewrite these.** Ours enforces a 15-minute minimum and silently rewrote `*/5` to
+`*/15` with a per-job offset. That is fine — with per-endpoint cadence a slower tick still delivers
+every endpoint's declared interval, as long as the tick is no slower than the shortest one (15
+minutes). If your host's floor is higher than that, lower the tick expectation rather than raising
+the intervals: check `crontab -l` after saving to see what actually got installed.
 
 ## 9. Confirm
 
