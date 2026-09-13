@@ -63,14 +63,20 @@ before assuming it.
 ## 3. Config
 
 ```bash
-cp divergence/config.example.php /home/USER/config.php
+cp divergence/config.example.php divergence/config.php   # repo root, beside app/ and public/
 # fill in the API key and DB credentials
-chmod 600 /home/USER/config.php
+chmod 600 divergence/config.php
 ```
 
 The loader searches `$DIVERGENCE_CONFIG`, then `../config.php` relative to the repo root, then
-`./config.php`. The layout above hits the second, which is why the repo sits one level below the
-config.
+`./config.php`. Either of the last two is safe, because the document root is `public/` and nothing
+above it is served — the repo root is already outside the webroot.
+
+Put it in the repo root when the deployment is one self-contained folder, which is what a cPanel
+subdomain directory is. Put it one level above when several deployments share a config, or when the
+repo folder is replaced wholesale on update.
+
+`/config.php` at the repo root is gitignored, so the filled-in version cannot be committed.
 
 Verify it is not web-reachable: requesting it over HTTP must 404. `app/bin/preflight.php` also asserts
 the resolved config path is not under `public/`.

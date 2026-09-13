@@ -65,19 +65,26 @@ tab → paste the contents of `docs/schema.sql` → Go. It creates seven tables 
 
 ## 5. The config file
 
-This is the one file that does **not** come from the repo, and it goes **above** the extracted
-folder:
+Rename `config.example.php` to **`config.php`** and leave it where it is — in the repo root, beside
+`app/` and `public/`:
 
 ```
-/home/USER/config.php          ← here, chmod 600
-/home/USER/divergence/         ← not in here
+/home/USER/site/
+├── config.php          ← here. chmod 600.
+├── app/
+└── public/             ← the document root
 ```
 
-Copy `config.example.php` to `/home/USER/config.php`, fill in the API key and the database name,
-user and password, then set permissions to 600 in File Manager.
+It is not web-reachable there: the document root is `public/`, one level below it. Nothing above
+`public/` is served.
 
-The loader looks one level above the repo root, which is why `divergence/` sits where it does. If
-you put the config anywhere a browser can reach, the web app refuses to start and tells you to
+Fill in the API key, and the database name, user and password. Then set permissions to **600** in
+File Manager.
+
+If you would rather keep the config outside the repo folder entirely — worth it when you replace the
+whole folder on each update — put it one directory above instead. The loader checks there first.
+
+**Never put it inside `public/`.** The app refuses to start if it finds it there, and tells you to
 rotate the key.
 
 ## 6. Check the host can do the job
