@@ -348,6 +348,27 @@ mitigation is disclosure rather than cleverness — the method page names it as 
 the product, and `trend_rank` stays declared at weight 0.60 so the moment attention data is
 reachable the proxy drops to a minority input on its own.
 
+**Measured, 13 September 2026: the feared contamination is not showing up.** The worry above is that
+a price-derived Voice would correlate with a turnover-derived Money and the screener would end up
+ranking one thing twice. Across the 60 assets on the live screener the correlation between the two
+columns is **−0.00**. Independent, in practice, to two decimal places.
+
+That does not make the input good — it is still a proxy for attention rather than a measurement of
+it, and it would still be replaced the moment a trending endpoint became callable. But the specific
+failure this decision was nervous about is not occurring, and saying so is worth more than repeating
+the worry. Re-measure if the weights change:
+
+```bash
+curl -s "$SITE/api/assets.php?limit=100" | python3 -c "
+import json,sys
+a=json.load(sys.stdin)['assets']
+v=[x['voice'] for x in a]; m=[x['money'] for x in a]; n=len(v)
+mv=sum(v)/n; mm=sum(m)/n
+cov=sum((v[i]-mv)*(m[i]-mm) for i in range(n))
+sv=sum((x-mv)**2 for x in v)**0.5; sm=sum((x-mm)**2 for x in m)**0.5
+print(round(cov/(sv*sm), 3))"
+```
+
 **Revisit if:** any trending endpoint becomes callable. Nothing needs rewriting; the weights already
 describe the intended axis.
 

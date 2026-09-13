@@ -116,8 +116,10 @@ We would rather you heard this from us than found it.
   Money moves every fifteen minutes, and the horizontal stretches in the trail are that, not a quiet
   market. [docs/limits.md](docs/limits.md)
 - **The per-asset Voice proxy is price-derived**, because there is no per-asset attention data at
-  all on this plan. It is the weakest number in the product and it is labelled as such wherever it
-  appears. [D18](docs/decisions.md)
+  all on this plan. It is the weakest input in the product and it is labelled as such wherever it
+  appears. The worry was that it would correlate with the Money axis and the screener would rank one
+  thing twice; measured across the live screener, the two columns correlate at **−0.00**, so that
+  particular failure is not occurring. [D18](docs/decisions.md)
 - **Open interest is BTC only.** The endpoint takes one symbol per call, so a hundred assets would
   be a hundred credits per sample. Liquidations do not have this limit — 100 assets for one credit.
 - **The screener hides stablecoins by default.** High turnover with no narrative is what a
