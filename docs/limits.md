@@ -13,7 +13,7 @@ Six of the seven Voice endpoints answer HTTP 403 on the Basic plan: both communi
 endpoints, all three cryptocurrency trending endpoints, and both content endpoints. What survives is
 `/v3/fear-and-greed/latest`, which CoinMarketCap updates daily.
 
-**What it means for the product:** Voice steps once a day while Money moves every ten minutes. The
+**What it means for the product:** Voice steps once a day while Money moves every fifteen minutes. The
 quadrant still separates the four readings correctly, but the trail is mostly horizontal with daily
 vertical steps, and a reader who did not know that would misread the flat stretches as a market that
 had gone quiet. So the market screen says it, on the chart.
@@ -108,8 +108,9 @@ cosmetic.
 
 ## The credit budget is the binding constraint
 
-15,000 credits a month on the Basic plan. The cadence — 10 minutes market-wide, 30 per asset — was
-chosen to fit it, not because it is ideal. About 624 credits a day.
+15,000 credits a month. Each endpoint carries its own interval — 15 minutes for the leverage
+inputs, 30 for the universe, 120 for exchange reserves, 180 for sentiment — chosen to fit the budget
+rather than because they are ideal. **404 credits a day**, 19% under.
 
 A known inefficiency: cadence is per *scope*, so the once-a-day fear and greed index is fetched 144
 times a day for 143 identical values. Per-endpoint cadence would roughly halve the bill. It is the

@@ -90,7 +90,7 @@ function scoring_input(
  * This axis is a casualty of the plan. It was designed around trending rank churn,
  * most-visited assets and community post volume; all three are 403 (D14). What is left
  * is the fear and greed index, which CoinMarketCap updates **once a day**. So Voice
- * steps daily while Money moves every ten minutes, and the app says so on the chart
+ * steps daily while Money moves every fifteen minutes, and the app says so on the chart
  * rather than letting a flat line read as a calm market.
  *
  * The forbidden inputs stay declared. They are what the axis becomes on a plan that

@@ -28,7 +28,7 @@ many of its declared inputs it actually saw.
 
 **In practice this axis is one input.** Six of the seven Voice endpoints are forbidden on the Basic
 plan, leaving the fear and greed index — which CoinMarketCap updates **once a day**. So Voice steps
-daily while Money moves every ten minutes, and the horizontal stretches in the trail are that, not a
+daily while Money moves every fifteen minutes, and the horizontal stretches in the trail are that, not a
 market that went quiet. The app says so on the chart itself.
 
 The forbidden inputs stay declared at their intended weights so the gap between the designed method

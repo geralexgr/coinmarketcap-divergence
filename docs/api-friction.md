@@ -124,7 +124,7 @@ anyone who opens it rather than buried in this file.
 *The Voice axis ships at daily resolution and says so on the chart.* Not upgrading the plan was a
 deliberate choice (D16): a product that needs a paid tier to be demonstrable is one a judge with
 their own Basic key cannot evaluate. The cost is real and visible — Voice steps once a day while
-Money moves every ten minutes, so the trail is mostly horizontal with daily vertical steps. The
+Money moves every fifteen minutes, so the trail is mostly horizontal with daily vertical steps. The
 forbidden inputs stay declared in the method at their intended weights and light up with no code
 change if access ever widens.
 

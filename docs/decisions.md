@@ -244,6 +244,11 @@ will. Re-run the verifier and edit that one function.
 ---
 
 ## D15 — Cadence is set by the credit budget, not by what would be ideal
+
+> **Superseded on 13 September 2026 by per-endpoint cadence.** The per-scope schedule below
+> was replaced: each endpoint now carries its own interval, which is what the last paragraph
+> of this entry proposed as "the better fix, not taken yet". 404 credits a day rather than
+> 624, while carrying three more inputs. The reasoning stands; the numbers are history.
 **Date:** 13 September 2026 · **Status:** settled
 
 5 minutes market-wide and 15 minutes per asset — the cadence this repo has assumed — costs about
