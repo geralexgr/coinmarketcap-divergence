@@ -187,9 +187,19 @@
     svg.appendChild(el('text', { x: lx, y: ly + 12, class: 'pintime', 'text-anchor': anchor }, utcLabel(last.sampled_at)));
 
     if (series.length > 1) {
+      /* The start-of-trail label sits to the LEFT of the first point, not centred under
+       * it. A daily Voice step means the samples at one Voice level form a horizontal
+       * band, and a centred label runs straight underneath that band — unreadable
+       * exactly when the trail is most interesting. Off to the side it has clear space,
+       * and it flips to the right if the trail begins near the left edge. */
       var first = series[0];
+      var fx = px(first.money), fy = py(first.voice);
+      var toLeft = fx > L + 80;
       svg.appendChild(el('text', {
-        x: px(first.money), y: py(first.voice) + 14, class: 'pintime', 'text-anchor': 'middle'
+        x: toLeft ? fx - 9 : fx + 9,
+        y: fy + 3,
+        class: 'pintime',
+        'text-anchor': toLeft ? 'end' : 'start'
       }, utcLabel(first.sampled_at)));
     }
 
