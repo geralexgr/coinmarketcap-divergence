@@ -229,6 +229,36 @@ test('a value is read as of a moment and never from after it', function (): void
     assert_same(null, value_as_of($points, '2026-09-13 11:00:00.000', 45), 'nothing had been recorded yet');
 });
 
+test('inputs recorded seconds after the anchor still belong to that sample', function (): void {
+    // The regression test for the bug that reached production. One poller run writes
+    // global_metrics first and the derivatives endpoints a few seconds later, so the
+    // anchor is always the EARLIEST row in its own cluster and a strictly-backward
+    // lookup cannot see the rest of the run.
+    //
+    // Live, that scored the Money axis on one input of five while the readout panel
+    // showed all five as current. The local seeder wrote every endpoint with an
+    // identical timestamp and hid it completely, which is why this test uses the real
+    // shape: an anchor, and siblings a few seconds after it.
+    $anchor = '2026-09-13 11:05:46.701';
+    $openInterest = [['at' => '2026-09-13 11:05:50.138', 'value' => 9.05e10, 'raw_sample_id' => 2]];
+    $liquidations = [['at' => '2026-09-13 11:05:51.314', 'value' => 1.9e8,  'raw_sample_id' => 3]];
+
+    assert_true(value_as_of($openInterest, $anchor, 45) !== null, 'a sibling 3s later is part of the same sample');
+    assert_true(value_as_of($liquidations, $anchor, 45) !== null, 'and so is one 5s later');
+    assert_close(9.05e10, value_as_of($openInterest, $anchor, 45)['value'], 'with its real value', 1.0);
+});
+
+test('the cluster window does not reach into the next poller run', function (): void {
+    // Runs are five minutes apart at the fastest cron tick and the window is two
+    // minutes, so a reading can never be claimed by the wrong moment. If this ever
+    // fails, a score is being built from data that did not exist when it was taken.
+    $anchor = '2026-09-13 11:05:00.000';
+    $nextRun = [['at' => '2026-09-13 11:10:02.000', 'value' => 42.0, 'raw_sample_id' => 9]];
+
+    assert_same(null, value_as_of($nextRun, $anchor, 45), 'the next run is not part of this moment');
+    assert_true(SAMPLE_CLUSTER_SECONDS < 300, 'the window stays inside the minimum gap between runs');
+});
+
 test('a reading too old to be current is dropped rather than stretched', function (): void {
     $points = [['at' => '2026-09-13 00:00:00.000', 'value' => 1.0, 'raw_sample_id' => 1]];
 

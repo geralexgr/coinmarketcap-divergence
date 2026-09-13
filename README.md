@@ -7,6 +7,9 @@ volume and exchange flow on another — and never puts them on the same axis. Th
 
 Built for the CoinMarketCap API Hackathon.
 
+**Live: https://coinmarketcap.geralexgr.com** · **Judging this? [JUDGE.md](JUDGE.md)** — how to check
+any number on the site against CoinMarketCap in about five minutes, and where we think it is weakest.
+
 ---
 
 ## The screen

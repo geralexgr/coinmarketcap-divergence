@@ -13,6 +13,22 @@
 
 declare(strict_types=1);
 
+/**
+ * Refuse to run when requested directly.
+ *
+ * `.htaccess` denies this file, and on Apache that is enough. LiteSpeed — which is what
+ * cPanel actually runs — served it anyway: the live deployment returned HTTP 200 for
+ * /bootstrap.php. It emitted nothing, because the file only defines functions, so the
+ * exposure was small. It was still a file the server was willing to execute on request.
+ *
+ * A guard in PHP does not care which web server is in front of it, so this is the check
+ * that actually holds. The .htaccess rule stays as the first line of defence.
+ */
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === realpath(__FILE__)) {
+    http_response_code(403);
+    exit;
+}
+
 require_once __DIR__ . '/../app/lib/config.php';
 require_once __DIR__ . '/../app/lib/db.php';
 require_once __DIR__ . '/../app/lib/endpoints.php';
