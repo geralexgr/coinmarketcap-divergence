@@ -6,9 +6,9 @@
  * from. The page cannot describe a method the code does not implement, because there is
  * only one description of the method and this is a view of it.
  *
- * It states the limits first. Ten of the seventeen endpoints this product was designed
- * around are forbidden on the plan behind the key, and a method page that buried that
- * would be worth less than no method page at all.
+ * It states the limits first. Ten of the twenty endpoints in the catalogue are forbidden
+ * on this key, and a method page that buried that would be worth less than no method page
+ * at all.
  */
 
 declare(strict_types=1);
@@ -59,8 +59,8 @@ $axisTitles = [
   <h2 id="plan">What the plan permits, and what it costs the method</h2>
   <p>
     The API key behind this deployment is on CoinMarketCap's <b>Basic</b> plan. Measured against
-    the live API rather than read off a pricing page: seven of the seventeen endpoints this product
-    was designed around are callable and ten answer HTTP&nbsp;403.
+    the live API rather than read off a pricing page: ten of the twenty endpoints in the catalogue
+    are callable and ten answer HTTP&nbsp;403.
   </p>
   <p>
     The Voice axis takes the damage. Trending, most-visited, community and content are all
