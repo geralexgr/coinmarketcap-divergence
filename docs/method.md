@@ -64,12 +64,17 @@ do. Magnitude of repositioning only.
 
 ### Per asset
 
-| Axis | Input | Range | Weight | Status |
-|---|---|---|---|---|
-| Voice | Trending rank, **inverted** (rank 1 is loudest) | 1 → 100 | 0.60 | 403 on this plan |
-| Voice | Size of 24h move, absolute | 0.5 → 15 % | 0.40 | **in use** |
-| Money | Turnover — `volume_24h / market_cap` | 0.005 → 0.30 | 0.60 | **in use** |
-| Money | Volume change, 24h, signed | −40 → 80 % | 0.40 | **in use** |
+| Axis | Input | Weight | Status |
+|---|---|---|---|
+| Voice | Trending rank, **inverted** (rank 1 is loudest) | 0.60 | 403 on this plan |
+| Voice | Size of 24h move, absolute | 0.40 | **in use** |
+| Money | Turnover — `volume_24h / market_cap` | 0.60 | **in use** |
+| Money | Volume change, 24h, signed | 0.40 | **in use** |
+
+**No ranges, deliberately.** Per-asset inputs are never min-max scaled — each is ranked against the
+same input across the rest of the universe at that instant (basis C below), which reads no floor and
+no ceiling. `scoring/inputs.php` carries values for them so both scopes share one shape, and the
+method page prints "rank vs universe" rather than a number that does not drive the score.
 
 **The per-asset Voice proxy is the weakest number in the product and is labelled as such wherever it
 appears.** There is no per-asset attention data on this plan at all. The size of the day's move

@@ -101,10 +101,17 @@ $axisTitles = [
   </p>
 
   <?php foreach ($method['axes'] as $key => $inputs): ?>
+    <?php
+    // Per-asset scores are ranked against the universe (D17), which never reads a
+    // floor or a ceiling. Printing one here would present a number that does not
+    // affect the score as though it drove it — on the page whose whole job is to be
+    // checkable.
+    $crossSection = str_starts_with($key, 'asset.');
+    ?>
     <h3><?= h($axisTitles[$key] ?? $key) ?></h3>
     <table class="method">
       <thead>
-        <tr><th>Input</th><th>Endpoint</th><th>Range</th><th>Weight</th><th>Status</th></tr>
+        <tr><th>Input</th><th>Endpoint</th><th><?= $crossSection ? 'Scaling' : 'Range' ?></th><th>Weight</th><th>Status</th></tr>
       </thead>
       <tbody>
         <?php foreach ($inputs as $input): ?>
@@ -115,9 +122,14 @@ $axisTitles = [
           </td>
           <td class="mono"><?= h($input['endpoint']) ?></td>
           <td class="mono">
-            <?= h(rtrim(rtrim(number_format((float) $input['floor'], 4, '.', ''), '0'), '.')) ?>
-            → <?= h(rtrim(rtrim(number_format((float) $input['ceiling'], 4, '.', ''), '0'), '.')) ?>
-            <em><?= h($input['unit']) ?><?= $input['invert'] ? ', inverted' : '' ?></em>
+            <?php if ($crossSection): ?>
+              rank vs universe
+              <em><?= h($input['unit']) ?><?= $input['invert'] ? ', inverted' : '' ?></em>
+            <?php else: ?>
+              <?= h(rtrim(rtrim(number_format((float) $input['floor'], 4, '.', ''), '0'), '.')) ?>
+              → <?= h(rtrim(rtrim(number_format((float) $input['ceiling'], 4, '.', ''), '0'), '.')) ?>
+              <em><?= h($input['unit']) ?><?= $input['invert'] ? ', inverted' : '' ?></em>
+            <?php endif; ?>
           </td>
           <td class="mono"><?= h(number_format((float) $input['weight'], 2)) ?></td>
           <td>
@@ -133,6 +145,11 @@ $axisTitles = [
         <?php endforeach; ?>
       </tbody>
     </table>
+    <?php if ($crossSection): ?>
+      <p class="muted">These inputs are never min-max scaled: each is ranked against the same input
+         across the rest of the tracked universe at the same instant, so there is no floor or ceiling
+         to state. <a href="#basis">Why per asset differs</a>.</p>
+    <?php endif; ?>
   <?php endforeach; ?>
 
   <h2 id="divergence">Divergence</h2>

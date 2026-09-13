@@ -176,6 +176,12 @@ function money_inputs_market(): array
 /**
  * Voice, per asset.
  *
+ * **The floor and ceiling below are not used.** Per-asset scores are ranked against the
+ * universe at the same instant (D17), which reads neither. They are carried so the
+ * declaration has one shape for both scopes, and so they are already correct if a
+ * fixed-basis per-asset score is ever wanted. The method page prints "rank vs universe"
+ * for this scope rather than showing a range that does not drive the number.
+ *
  * There is no per-asset attention data on this plan at all: trending, most-visited and
  * community are the endpoints that carry it and all three are 403. `abs_percent_change_24h`
  * is a proxy and a weak one — the size of the day's move, on the reasoning that an asset
