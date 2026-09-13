@@ -15,7 +15,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../lib/extract.php';
+require_once __DIR__ . '/../app/lib/extract.php';
 
 function live_fixture(string $name): ?string
 {

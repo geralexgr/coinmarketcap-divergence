@@ -63,7 +63,7 @@ check('API key present', $hasKey, $hasKey ? redact((string) $config['cmc_api_key
 // The whole point of keeping it above the webroot. If this path is inside public/,
 // the key is one HTTP request away from anyone.
 if (is_array($config)) {
-    $publicDir = realpath(__DIR__ . '/../public');
+    $publicDir = realpath(__DIR__ . '/../../public');
     $configReal = realpath((string) $config['_config_path']);
     $outside = $publicDir === false || $configReal === false || !str_starts_with($configReal, $publicDir);
     check('Config is outside the webroot', $outside, $outside ? 'yes' : "INSIDE {$publicDir}");
@@ -118,13 +118,13 @@ if (is_array($config) && !empty($config['db_name'])) {
         check('MySQL 5.7+ (JSON column support)', version_compare($version, '5.7', '>='), $version, false);
 
         $present = schema_is_present($pdo);
-        check('Schema applied (001_init.sql)', $present,
-            $present ? 'raw_samples + fetch_log exist' : 'run: mysql -u USER -p DB < sql/001_init.sql');
+        check('Schema applied', $present,
+            $present ? 'raw_samples + fetch_log exist' : 'apply docs/schema.sql to the database');
 
         // Not blocking: the recorder runs without the derived tables, and on day 1 it
         // should. Only the extractor needs these, and recording comes first.
         $derived = derived_schema_is_present($pdo);
-        check('Derived tables (002_derived.sql)', $derived,
+        check('Derived tables applied', $derived,
             $derived ? 'market_metric + asset_metric + scores exist' : 'not migrated yet — only needed for bin/extract.php',
             false);
 

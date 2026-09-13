@@ -108,7 +108,7 @@ happened.
 Anything needing two samples belongs to the scoring layer. This is what makes a rebuild
 order-independent.
 
-**The method is declared as data (`scoring/inputs.php`).** The scorer runs from it, the public
+**The method is declared as data (`app/scoring/inputs.php`).** The scorer runs from it, the public
 method page renders from it, `docs/method.md` is written from it. Add an input there, not in three
 places.
 
@@ -146,7 +146,7 @@ time. A daily sample makes the product pointless.
 - **15,000 credits/month** on the Basic plan. This is the binding constraint on the whole product.
   Credits are read from each response and logged, never estimated.
 - **Cadence 10 min market-wide, 30 min per asset** — set by the budget, not by preference (D15).
-  Do not raise it without redoing the arithmetic; `bin/health.php` prints remaining headroom in days.
+  Do not raise it without redoing the arithmetic; `app/bin/health.php` prints remaining headroom in days.
 - Keep each cron run short and stateless. Shared hosts kill long-running processes.
 
 ---

@@ -13,14 +13,39 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../lib/config.php';
-require_once __DIR__ . '/../lib/db.php';
-require_once __DIR__ . '/../lib/endpoints.php';
-require_once __DIR__ . '/../lib/queries.php';
-require_once __DIR__ . '/../scoring/inputs.php';
-require_once __DIR__ . '/../scoring/normalise.php';
-require_once __DIR__ . '/../scoring/score.php';
-require_once __DIR__ . '/../scoring/recompute.php';
+require_once __DIR__ . '/../app/lib/config.php';
+require_once __DIR__ . '/../app/lib/db.php';
+require_once __DIR__ . '/../app/lib/endpoints.php';
+require_once __DIR__ . '/../app/lib/queries.php';
+require_once __DIR__ . '/../app/scoring/inputs.php';
+require_once __DIR__ . '/../app/scoring/normalise.php';
+require_once __DIR__ . '/../app/scoring/score.php';
+require_once __DIR__ . '/../app/scoring/recompute.php';
+
+/**
+ * Refuse to serve anything if the config file is inside the document root.
+ *
+ * The config holds the API key and the database password. If a deployment puts it
+ * somewhere a browser can request, the correct behaviour is to stop, loudly — a working
+ * site with a downloadable key is far worse than a site that says it is misconfigured.
+ *
+ * This is the web-side twin of the check `app/bin/preflight.php` makes over SSH. It is
+ * here because the failure it guards against is a deployment mistake, and deployment
+ * mistakes are made by people who are not running preflight.
+ *
+ * @param array<string,mixed> $config
+ */
+function config_is_web_exposed(array $config): bool
+{
+    $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $configPath = realpath((string) ($config['_config_path'] ?? ''));
+
+    if ($docRoot === false || $configPath === false) {
+        return false;
+    }
+
+    return str_starts_with($configPath, rtrim($docRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+}
 
 /**
  * Connect, or hand back the reason.
@@ -35,6 +60,13 @@ function web_connect(): array
     [$config, $error] = try_load_config();
     if ($config === null) {
         return [null, $error ?? 'No config file found.'];
+    }
+
+    if (config_is_web_exposed($config)) {
+        return [null,
+            'Refusing to start: the config file holding the API key and database password is inside '
+            . 'the document root, where a browser can request it. Move it above the webroot — the '
+            . 'layout is in DEPLOY.md — and rotate the API key, because it may already have been fetched.'];
     }
 
     try {

@@ -7,6 +7,8 @@
  *
  *     /home/USER/config.php          ← the real one, chmod 600
  *     /home/USER/divergence/         ← this repo
+ *         app/lib/config.php         ← this file
+ *         public/                    ← the only web-served directory
  *
  * Search order, first hit wins:
  *   1. $DIVERGENCE_CONFIG            — explicit path, for anything unusual
@@ -34,7 +36,10 @@ const DIVERGENCE_DEFAULTS = [
  */
 function config_candidate_paths(): array
 {
-    $repoRoot = dirname(__DIR__);
+    // Two levels up, not one: this file is app/lib/config.php, so dirname(__DIR__) is
+    // app/ and the repo root is above that. Getting this wrong would search inside the
+    // repo for a file whose whole purpose is to live outside it.
+    $repoRoot = dirname(dirname(__DIR__));
     $paths = [];
 
     $fromEnv = getenv('DIVERGENCE_CONFIG');

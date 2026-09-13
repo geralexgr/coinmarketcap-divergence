@@ -64,7 +64,7 @@ try {
 }
 
 if (!derived_schema_is_present($pdo) || !scores_schema_is_present($pdo)) {
-    fwrite(STDERR, "Derived tables missing or out of date. Run: mysql -u USER -p DB < sql/002_derived.sql\n");
+    fwrite(STDERR, "Derived tables missing or out of date. Schema missing. Apply docs/schema.sql to the database (phpMyAdmin -> SQL tab, or: mysql -u USER -p DB < docs/schema.sql)\n");
     exit(3);
 }
 

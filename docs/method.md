@@ -2,7 +2,7 @@
 
 How every number in this product is produced.
 
-The authoritative version of this is **`scoring/inputs.php`** — the method is declared as data, the
+The authoritative version of this is **`app/scoring/inputs.php`** — the method is declared as data, the
 scorer runs from that declaration, and the public method page renders from it. This document is the
 prose around it. If the two disagree, the code is right and this file is a bug.
 
@@ -73,7 +73,7 @@ do. Magnitude of repositioning only.
 
 **No ranges, deliberately.** Per-asset inputs are never min-max scaled — each is ranked against the
 same input across the rest of the universe at that instant (basis C below), which reads no floor and
-no ceiling. `scoring/inputs.php` carries values for them so both scopes share one shape, and the
+no ceiling. `app/scoring/inputs.php` carries values for them so both scopes share one shape, and the
 method page prints "rank vs universe" rather than a number that does not drive the score.
 
 **The per-asset Voice proxy is the weakest number in the product and is labelled as such wherever it

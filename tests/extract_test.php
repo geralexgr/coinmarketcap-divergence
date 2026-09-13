@@ -11,7 +11,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../lib/extract.php';
+require_once __DIR__ . '/../app/lib/extract.php';
 
 /** @return array<string,float> metric => value, for readable assertions */
 function market_metrics(array $result): array

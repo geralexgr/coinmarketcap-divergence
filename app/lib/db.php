@@ -117,7 +117,7 @@ function insert_fetch_log(
     return (int) $pdo->lastInsertId();
 }
 
-/** True when 001_init.sql has been applied. Checked before the first write, not after. */
+/** True when the recording core exists. Checked before the first write, not after. */
 function schema_is_present(PDO $pdo): bool
 {
     try {
@@ -130,13 +130,13 @@ function schema_is_present(PDO $pdo): bool
 }
 
 // ---------------------------------------------------------------------------
-// Derived tables (002_derived.sql). Everything below is rebuildable from
+// Derived tables. Everything below is rebuildable from
 // raw_samples, which is why all of it upserts rather than appends: running the
 // extractor twice over the same payload must produce the same table, not two
 // copies of the same series.
 // ---------------------------------------------------------------------------
 
-/** True when 002_derived.sql has been applied. */
+/** True when the derived tables exist. */
 function derived_schema_is_present(PDO $pdo): bool
 {
     try {

@@ -53,13 +53,13 @@ day eighteen; this cannot.
 Each run is short and stateless. Shared hosts kill long-running processes, so there is no queue, no
 daemon, and no in-memory state between runs.
 
-### `lib/`
+### `app/lib/`
 `http.php` (timeouts, retry with backoff, credit parsing, `cmc_outcome()`), `db.php` (PDO, prepared
 statements only), `config.php` loading from outside the webroot, `endpoints.php` (the one catalogue
 the prober, verifier and poller all share), `extract.php` (pure, single-payload), and `queries.php`
 — every read the surfaces make.
 
-### `scoring/`
+### `app/scoring/`
 `inputs.php` declares the method as data; `normalise.php` and `score.php` are pure functions over
 it; `recompute.php` is the only part that touches the database. Nothing here fetches. This is what
 makes rescoring the whole of history a one-line operation and the normalisation testable against
@@ -67,10 +67,10 @@ fixtures.
 
 ### `public/`
 The only web-served directory. Read-only against the database — there is no write path anywhere in
-the web app. Three pages and four JSON endpoints, all reading through `lib/queries.php`.
+the web app. Three pages and four JSON endpoints, all reading through `app/lib/queries.php`.
 
 ### `mcp/`
-A JSON-RPC server over stdio, wrapping the same `lib/queries.php` functions the web app reads
+A JSON-RPC server over stdio, wrapping the same `app/lib/queries.php` functions the web app reads
 through. That shared file is what makes the two surfaces answer identically rather than
 approximately. No tool takes a write action. See `mcp-tools.md`.
 
@@ -96,7 +96,7 @@ originally designed around costs ~1,250 a day and exhausts the plan in twelve da
 - **15,000 credits/month** — the Basic plan, measured 13 Sep 2026 (D14), not the 300,000 originally
   assumed. Credits per call come back in the response; they are logged rather
   than estimated, so usage is observable.
-- Both limits are enforced in `lib/http.php`, not in each fetcher.
+- Both limits are enforced in `app/lib/http.php`, not in each fetcher.
 
 ## Failure behaviour
 
@@ -107,7 +107,7 @@ Nothing about a failure is silent, and nothing about a failure is fatal to the n
 - An input the scoring layer cannot find is **dropped, not zeroed**, and the score records how many
   inputs it saw. A sample with no Voice input at all writes no score row, so the trail shows a gap
   rather than a point that was never measured.
-- The recording-health script (`bin/health.php`) reports rows/hour, longest gap, extraction lag and
+- The recording-health script (`app/bin/health.php`) reports rows/hour, longest gap, extraction lag and
   failure rate, so a dead poller is noticed the same day rather than at submission time.
 - Every web page has an honest empty state naming what is missing. An empty chart would read as a
   measurement of a market where nothing is happening.

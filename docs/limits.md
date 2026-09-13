@@ -19,14 +19,14 @@ vertical steps, and a reader who did not know that would misread the flat stretc
 had gone quiet. So the market screen says it, on the chart.
 
 **What would change it:** a plan upgrade, and nothing else. The inputs are already declared in
-`scoring/inputs.php` at their intended weights and gated on `endpoint_access_results()` in
-`lib/endpoints.php` — one verification run turns them on. See [D16](decisions.md).
+`app/scoring/inputs.php` at their intended weights and gated on `endpoint_access_results()` in
+`app/lib/endpoints.php` — one verification run turns them on. See [D16](decisions.md).
 
 ## There are no derivatives endpoints at all
 
 38 candidate paths probed across `/v1/` to `/v4/` — funding rate, open interest, liquidations,
 futures, perpetuals, derivatives listings, quotes and exchanges. **Every one absent.** Not 403: the
-paths do not resolve, so no plan upgrade produces them. Reproduce with `php bin/probe-paths.php`,
+paths do not resolve, so no plan upgrade produces them. Reproduce with `php app/bin/probe-paths.php`,
 which needs no key and costs no credits.
 
 **What it means for the product:** the Money axis measures money *moving* and money *at rest*, not
@@ -111,7 +111,7 @@ plausible-looking on a chart. It is now chosen by comparing timestamps, and ther
 `status.error_code: 500` and "The system is busy, please try again later!". Reading the HTTP status
 alone recorded six non-existent endpoints as working.
 
-Every response in this repo is classified by `cmc_outcome()` in `lib/http.php`, which reads the
-body's error code as well as the status. `bin/probe-paths.php` runs two known-fake control paths on
+Every response in this repo is classified by `cmc_outcome()` in `app/lib/http.php`, which reads the
+body's error code as well as the status. `app/bin/probe-paths.php` runs two known-fake control paths on
 every invocation, so a change in CMC's routing surfaces as a failed control rather than as silently
 wrong results.

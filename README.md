@@ -142,36 +142,37 @@ quadrant chart is hand-drawn SVG rather than a charting library.
 
 ```bash
 # 1. Does the API surface look the way this repo says it does? No key, no credits.
-php bin/probe-paths.php
+php app/bin/probe-paths.php
 
 # 2. Point the config at your key and database. Outside the webroot.
 cp config.example.php ../config.php && chmod 600 ../config.php
 
 # 3. Can this host actually do the job? Run it ON the host, over SSH.
-php bin/preflight.php
+php app/bin/preflight.php
 
 # 4. Which endpoints does the plan permit? ~6 credits.
-php bin/verify-endpoints.php --save-fixtures
+php app/bin/verify-endpoints.php --save-fixtures
 
-# 5. Create the tables. 001 is the recording core; 002 is everything derived from it.
-mysql -u USER -p DB < sql/001_init.sql
-mysql -u USER -p DB < sql/002_derived.sql
+# 5. Create the tables. One script, safe to re-run.
+mysql -u USER -p DB < docs/schema.sql
 
 # 6. One sample, verbose, nothing hidden.
-php poller/run.php --once
+php app/poller/run.php --once
 
 # 7. Read stored payloads into typed rows. No credits, no network.
-php bin/extract.php --verbose
+php app/bin/extract.php --verbose
 
 # 8. Score them.
-php bin/score.php --verbose
+php app/bin/score.php --verbose
 
 # 9. Is it still recording, and is it still being read?
-php bin/health.php
+php app/bin/health.php
 ```
 
-Then point the document root at `public/` and open it. Full runbook, including the cron entries and
-the cPanel specifics: [`docs/deploy.md`](docs/deploy.md).
+Then point the document root at `public/` and open it.
+
+**Deploying to cPanel: [DEPLOY.md](DEPLOY.md)** — step by step, written for the download-the-zip
+workflow. The reasoning behind each step is in [`docs/deploy.md`](docs/deploy.md).
 
 The tests need no key, no database and no network:
 
@@ -184,7 +185,7 @@ php tests/run.php
 Same scores, as agent tools, over the same queries the web app reads through:
 
 ```json
-{ "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] }
+{ "command": "php", "args": ["/home/USER/divergence/app/mcp/server.php"] }
 ```
 
 Seven tools, none of which takes a write action. Surface: [`docs/mcp-tools.md`](docs/mcp-tools.md).
@@ -194,7 +195,7 @@ Seven tools, none of which takes a write action. Surface: [`docs/mcp-tools.md`](
 ## CoinMarketCap endpoints used
 
 Two different questions, answered by two different scripts. **Does the path exist?** —
-`bin/probe-paths.php`, no key needed. **May this plan call it?** — `bin/verify-endpoints.php`, needs
+`app/bin/probe-paths.php`, no key needed. **May this plan call it?** — `app/bin/verify-endpoints.php`, needs
 the key. Both were run; the results are in [`docs/endpoint-access.md`](docs/endpoint-access.md) and
 encoded in `endpoint_access_results()` so the poller cannot schedule a forbidden endpoint by
 accident.
@@ -256,7 +257,7 @@ to a leverage reading, and it is not on a chart anywhere on CoinMarketCap's site
 
 Reading the HTTP status alone recorded six non-existent derivatives endpoints as working. Every
 response in this repo is classified by `cmc_outcome()` in [`lib/http.php`](lib/http.php), which
-reads the body's error code as well as the status, and `bin/probe-paths.php` runs two control paths
+reads the body's error code as well as the status, and `app/bin/probe-paths.php` runs two control paths
 on every invocation so a change in CMC's routing surfaces as a failed control rather than as
 silently wrong results.
 
@@ -292,17 +293,26 @@ Full spec: [`docs/method.md`](docs/method.md) · What it cannot see: [`docs/limi
 
 ```
 divergence/
+├── DEPLOY.md              cPanel, step by step
 ├── config.example.php     shape of the real config, which lives outside the webroot
-├── poller/run.php         the recorder — the only writer of source data
-├── lib/                   config, http client, db writers, endpoint catalogue, queries
-├── scoring/               the method as data, normalisation, and the recompute pass
-├── public/                the web app — the only web-served directory
-├── mcp/server.php         MCP server over the same queries
-├── sql/                   migrations
-├── bin/                   probe-paths · verify-endpoints · preflight · extract · score · health
+│
+├── app/                   ← everything that must NOT be web-reachable
+│   ├── poller/run.php       the recorder — the only writer of source data
+│   ├── lib/                 config, http client, db writers, endpoint catalogue, queries
+│   ├── scoring/             the method as data, normalisation, and the recompute pass
+│   ├── mcp/server.php       MCP server over the same queries
+│   └── bin/                 probe-paths · verify-endpoints · preflight · extract · score · health
+│
+├── public/                ← the document root, and the ONLY web-served directory
+│
 ├── tests/                 58 tests, no framework, no network, no database
-└── docs/                  method · data model · decisions · limits · deploy · API friction
+└── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
+
+The `app/` and `public/` split is the deployment boundary, not decoration: `app/` holds the API key
+loader and the poller, and a browser must never reach it. `app/.htaccess` denies everything as a
+second line of defence, and the web app refuses to start if it finds the config inside the document
+root.
 
 ---
 

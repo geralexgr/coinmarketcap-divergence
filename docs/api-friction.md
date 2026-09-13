@@ -38,7 +38,7 @@ sentiment.
 perpetuals. Every one absent. Not 403, which would have been a plan question with a plan answer.
 Absent, which no upgrade fixes.
 
-**Evidence:** `php bin/probe-paths.php` reproduces the whole run in about a minute. Full table in
+**Evidence:** `php app/bin/probe-paths.php` reproduces the whole run in about a minute. Full table in
 `endpoint-access.md`.
 
 **What we did instead:** rebuilt the Money axis from turnover (`volume_24h / market_cap`), volume
@@ -61,8 +61,8 @@ Six non-existent derivatives paths were briefly recorded as *working* because th
 the HTTP status and not the body. A generic "system is busy" message is also actively misleading —
 it reads as a transient outage worth retrying, not as "this endpoint has never existed".
 
-**Evidence:** `cmc_outcome()` in `lib/http.php` documents the two control paths and the
-classification. `bin/probe-paths.php` re-runs both controls on every invocation.
+**Evidence:** `cmc_outcome()` in `app/lib/http.php` documents the two control paths and the
+classification. `app/bin/probe-paths.php` re-runs both controls on every invocation.
 
 **What we did instead:** every response in the project is classified by body error code as well as
 HTTP status. The prober fails loudly if its controls stop reading as absent.
@@ -83,7 +83,7 @@ These are anticipated rather than observed. Confirm or delete each one.
   be backfilled to before recording started.
 - **Tier gaps.** Startup gives 23 latest-data endpoints against Standard's 35. 26 paths are
   confirmed to exist; which of them the plan actually permits goes here once
-  `bin/verify-endpoints.php` has been run with the real key.
+  `app/bin/verify-endpoints.php` has been run with the real key.
 - **Rate limit vs breadth.** 30 requests/minute against a desire to track the top 100 assets. What
   batching support actually exists decided the universe size.
 - **Credit accounting.** `status.credit_count` is in every response body, so credits are recorded
@@ -112,8 +112,8 @@ community trending endpoints, all three cryptocurrency trending endpoints, both 
 The Voice axis lost six of its seven inputs in one afternoon. What remains is the fear and greed
 index, which updates **once a day**.
 
-**Evidence:** `php bin/verify-endpoints.php --save-fixtures` — 17 calls, 6 credits, saved verbatim.
-The measured result is encoded in `endpoint_access_results()` in `lib/endpoints.php` and rendered
+**Evidence:** `php app/bin/verify-endpoints.php --save-fixtures` — 17 calls, 6 credits, saved verbatim.
+The measured result is encoded in `endpoint_access_results()` in `app/lib/endpoints.php` and rendered
 live on the method page, so the gap between the designed product and the running one is visible to
 anyone who opens it rather than buried in this file.
 
@@ -138,4 +138,4 @@ heaviest input on the Money axis.
 **The wider lesson:** the plan was assumed from the documentation for two days of design work before
 anyone called `/v1/key/info`. That call is free, takes one second, and would have reshaped the
 product before it was designed rather than after. It is now the first endpoint in the catalogue and
-the first thing `bin/preflight.php` reports.
+the first thing `app/bin/preflight.php` reports.

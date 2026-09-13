@@ -110,7 +110,7 @@ only if batching turns out to be generous. It is: 100 ids in one call, confirmed
 Funding rate, open interest and liquidations have **no endpoint on the CoinMarketCap API**. 38
 candidate paths probed across `/v1/` to `/v4/`; every one absent. This is not a plan-tier
 restriction — the paths do not exist, so no upgrade produces them. Evidence and method in
-`endpoint-access.md`; reproduce with `php bin/probe-paths.php`.
+`endpoint-access.md`; reproduce with `php app/bin/probe-paths.php`.
 
 The Money axis therefore measures committed money indirectly, from what does exist:
 
@@ -156,7 +156,7 @@ the answer to that, not changing the column type.
 **Date:** 12 September 2026 · **Status:** settled
 
 Two scripts, because they answer different questions and one of them needs no key:
-`bin/probe-paths.php` maps what exists, `bin/verify-endpoints.php` maps what our plan may call.
+`app/bin/probe-paths.php` maps what exists, `app/bin/verify-endpoints.php` maps what our plan may call.
 
 **Why:** CMC answers an unknown path with **HTTP 200** and `error_code: 500` "The system is busy".
 Reading the HTTP status alone recorded six non-existent derivatives endpoints as working. The
@@ -168,8 +168,8 @@ CMC's side shows up as a failed control rather than as silently wrong results.
 ## D13 — Extraction is pure, single-payload, and versioned
 **Date:** 13 September 2026 · **Status:** settled
 
-`lib/extract.php` turns exactly one stored payload into typed rows. It touches no database, no
-clock and no network, and it never looks at another sample. The writer is `bin/extract.php`; every
+`app/lib/extract.php` turns exactly one stored payload into typed rows. It touches no database, no
+clock and no network, and it never looks at another sample. The writer is `app/bin/extract.php`; every
 write upserts on a unique key, and `extraction_log` records which payloads have been read at which
 `EXTRACTOR_VERSION`.
 
@@ -196,7 +196,7 @@ a scoring-layer input, not an extraction-layer one.
 ## D14 — The plan is Basic, not Startup: 15,000 credits and no Voice endpoints
 **Date:** 13 September 2026 · **Status:** settled by measurement, product consequences open
 
-`php bin/verify-endpoints.php` with the real key. 17 endpoints called, 6 credits spent.
+`php app/bin/verify-endpoints.php` with the real key. 17 endpoints called, 6 credits spent.
 
 `/v1/key/info` reports **`credit_limit_monthly: 15000`**, not the 300,000 this repo has assumed
 throughout, and `rate_limit_minute: 50` rather than 30. The monthly window resets 1 October 2026 —
@@ -229,7 +229,7 @@ per-asset axis and is **amended** for the market-wide one. The same payload also
 yesterday's deltas for cap, volume and dominance.
 
 **Why the endpoint catalogue now gates on this:** `endpoint_access_results()` in
-`lib/endpoints.php` records the measurement, and `endpoints_to_poll()` drops anything marked
+`app/lib/endpoints.php` records the measurement, and `endpoints_to_poll()` drops anything marked
 forbidden regardless of its `poll` flag or a config override. A 403 costs a round trip, returns
 nothing, and fills `fetch_log` with noise that hides real failures.
 
@@ -275,7 +275,7 @@ plan gets upgraded or the axis is rebuilt on what is reachable. **Settled: rebui
 limitation is published rather than worked around.**
 
 Voice is the fear and greed index alone, weight 1.00 after renormalisation, updated **once a day**.
-The other two designed inputs stay declared in `scoring/inputs.php` at their intended weights,
+The other two designed inputs stay declared in `app/scoring/inputs.php` at their intended weights,
 marked unavailable, and shown that way on the method page.
 
 **Why not upgrade the plan:** it makes the product depend on a purchase to be demonstrable, and a
@@ -347,7 +347,7 @@ describe the intended axis.
 
 **Date:** 13 September 2026 · **Status:** settled, after it broke
 
-`bin/extract.php` selected `raw_samples.payload` alongside the id and fetched the batch with
+`app/bin/extract.php` selected `raw_samples.payload` alongside the id and fetched the batch with
 `fetchAll()`. At the documented cron limit of 2000 that is up to 2000 LONGTEXT bodies in memory at
 once — a listings payload is around 150KB, so roughly 300MB — and it died on PHP's default 128MB
 limit on the first full run against real volumes.
@@ -359,7 +359,7 @@ entry is safe at any batch size on a shared host.
 **Why it matters more than it looks:** the failure mode was a fatal error partway through a run, on
 the component whose whole job is to be re-runnable. It would have surfaced on the host as an
 extractor that silently stopped keeping up while the poller kept recording — visible only as
-extraction lag in `bin/health.php`, days later.
+extraction lag in `app/bin/health.php`, days later.
 
 **The general lesson, applied elsewhere in the codebase:** anything that reads `raw_samples` reads
 one payload at a time. The scoring layer loads `market_metric`, which is small typed rows, not
@@ -371,7 +371,7 @@ payloads.
 
 Nothing blocking. These are refinements that need data the deployment has not yet produced:
 
-- **Reference ranges.** The fixed-basis floors and ceilings in `scoring/inputs.php` are set from the
+- **Reference ranges.** The fixed-basis floors and ceilings in `app/scoring/inputs.php` are set from the
   first days of measurement and from the live payloads captured on 13 September 2026. They should be
   re-derived from a fortnight of real distributions and `METHOD_VERSION` bumped when they are.
 - **Percentile window length.** 30 days is declared; the deployment will never have that much during

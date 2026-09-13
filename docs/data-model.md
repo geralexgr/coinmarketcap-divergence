@@ -1,10 +1,10 @@
 # Data model
 
-`sql/001_init.sql` is the recording core; `sql/002_derived.sql` is everything derived from it. The
-column comments in those files are authoritative where this page disagrees.
+[`schema.sql`](schema.sql) is the whole schema in one script, safe to re-run. The column comments in
+it are authoritative where this page disagrees.
 
-Written by `poller/run.php` (raw), `bin/extract.php` (typed) and `bin/score.php` (scores). Nothing
-else writes: the web app and the MCP server never write at all.
+Written by `app/poller/run.php` (raw), `app/bin/extract.php` (typed) and `app/bin/score.php`
+(scores). Nothing else writes: the web app and the MCP server never write at all.
 
 ## Principles
 
