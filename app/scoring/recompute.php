@@ -31,6 +31,15 @@ require_once __DIR__ . '/score.php';
 const MARKET_ANCHOR_ENDPOINT = 'global_metrics';
 
 /**
+ * How much of the recent series is rescored on every run, even where rows already exist.
+ *
+ * Scoring runs on its own cron entry, offset from extraction, so a moment can be scored
+ * from a partially-extracted set of payloads. Redoing the tail lets those rows improve
+ * once the rest of the data lands, rather than freezing a thin score into the trail.
+ */
+const RESCORE_TAIL_HOURS = 6;
+
+/**
  * How stale an input may be and still be read as current, per metric, in minutes.
  *
  * Fear and greed is the reason this is not one number. CoinMarketCap updates it once a
@@ -142,12 +151,32 @@ function derive_cross_sample_inputs(array $series): array
 }
 
 /**
- * The value of one metric as of one moment, or null if the most recent reading is too
- * old to be called current.
+ * How far past the anchor a reading may sit and still belong to the same sample moment.
  *
- * Never looks forward. A score for 14:20 is built only from what had actually been
- * recorded by 14:20, which is what makes a recomputed history identical to the one that
- * would have been computed live.
+ * A poller run is not an instant. It writes global_metrics, then the derivatives
+ * endpoints, then the rest, a few seconds apart — five HTTP calls at 200-400ms each. The
+ * anchor is whichever lands first, so every other input in the same run is a few seconds
+ * *after* it.
+ *
+ * A strictly-backward lookup therefore cannot see them, and the Money axis scored on one
+ * input instead of five while the readout panel showed all five current. Found on the
+ * live deployment; the local seeder had written every endpoint with an identical
+ * timestamp and hid it completely.
+ *
+ * 120 seconds is comfortably longer than a run (about two seconds) and comfortably
+ * shorter than the gap between runs (five minutes at the fastest cron tick), so a
+ * reading can never be claimed by the wrong moment.
+ */
+const SAMPLE_CLUSTER_SECONDS = 120;
+
+/**
+ * The value of one metric as of one moment, or null if the nearest reading is too old to
+ * be called current.
+ *
+ * "As of" means the sample cluster the anchor belongs to, not the instant it carries —
+ * see SAMPLE_CLUSTER_SECONDS. Beyond that window it never looks forward: a score for
+ * 14:20 is built only from what the recorder had by 14:22, which is what keeps a
+ * recomputed history identical to the one that would have been computed live.
  *
  * @param array<int,array{at:string,value:float,raw_sample_id:int}> $points Oldest first.
  */
@@ -158,10 +187,12 @@ function value_as_of(array $points, string $at, int $maxAgeMinutes): ?array
         return null;
     }
 
+    $ceiling = $target + SAMPLE_CLUSTER_SECONDS;
+
     $found = null;
     foreach ($points as $point) {
         $t = strtotime($point['at'] . ' UTC');
-        if ($t === false || $t > $target) {
+        if ($t === false || $t > $ceiling) {
             break;
         }
         $found = $point;
@@ -171,6 +202,8 @@ function value_as_of(array $points, string $at, int $maxAgeMinutes): ?array
         return null;
     }
 
+    // Age is measured from the anchor, and a reading inside the cluster has an age at or
+    // below zero — which is within any tolerance, as it should be.
     $age = ($target - strtotime($found['at'] . ' UTC')) / 60;
 
     return $age <= $maxAgeMinutes ? $found : null;
@@ -304,6 +337,20 @@ function recompute_market(PDO $pdo, bool $rebuild = false, ?int $limit = null, b
         $done = $pdo->prepare('SELECT sampled_at FROM scores WHERE scope = ? AND cmc_id = 0 AND method_version = ?');
         $done->execute(['market', METHOD_VERSION]);
         $existing = array_flip($done->fetchAll(PDO::FETCH_COLUMN));
+
+        // Always redo the recent tail, even where a row already exists.
+        //
+        // The extractor and the scorer are separate cron jobs on offset minutes, so a
+        // moment can be scored before the extractor has finished reading every payload
+        // belonging to it — and without this it would keep that thinner score forever.
+        // Rescoring the last few hours costs almost nothing and makes the series
+        // self-healing instead of permanently degraded by one unlucky tick.
+        $cutoff = time() - RESCORE_TAIL_HOURS * 3600;
+        foreach (array_keys($existing) as $at) {
+            if (strtotime((string) $at . ' UTC') >= $cutoff) {
+                unset($existing[$at]);
+            }
+        }
     }
 
     $firstSample = (string) $moments[0];
