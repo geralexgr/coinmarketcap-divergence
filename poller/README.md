@@ -7,8 +7,8 @@ The only component that writes source data. Runs from cron via PHP CLI, never ov
 `run.php` — the whole recorder, one file.
 
 ```bash
-php poller/run.php --market          # every 5 minutes, via cron
-php poller/run.php --assets          # every 15 minutes, via cron
+php poller/run.php --market          # every 10 minutes, via cron
+php poller/run.php --assets          # every 30 minutes, via cron
 php poller/run.php --once            # market scope, verbose, for a human
 php poller/run.php --once --dry-run  # fetch and report, write nothing
 ```
@@ -24,11 +24,9 @@ There is no file per fetcher. Every endpoint the recorder needs is described by 
 call `cmc_get` with a different path. The split happens when an endpoint needs handling the others
 do not.
 
-## Planned
-
-| File | Job |
-|---|---|
-| `extract.php` | reads stored raw payloads → typed metric rows. Re-runnable over all history |
+Reading what it stored is somebody else's job: `bin/extract.php` turns payloads into typed rows and
+`bin/score.php` turns those into scores. Both are separate cron entries on offset minutes, because
+neither costs credits and a slow derivation must never be able to delay a fetch.
 
 ## Rules
 

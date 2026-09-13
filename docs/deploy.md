@@ -1,44 +1,55 @@
 # Deploy runbook
 
-Target: cPanel shared hosting, PHP + MySQL, real cron via PHP CLI.
+Target: cPanel shared hosting, PHP 8.0+ and MySQL, real cron through PHP CLI.
 
-Written before first deployment, so every step is an expectation until it has been done once —
-correct this file the first time it is followed, and note anything the host does differently.
-
-`bin/preflight.php` checks most of what this runbook assumes, and prints a markdown table of results
-for `docs/endpoint-access.md`. Run it after step 3 and again after step 2 is fixed, rather than
-discovering a missing extension at step 5.
+`bin/preflight.php` checks most of what this runbook assumes and prints a markdown table of results.
+Run it after step 3, rather than discovering a missing extension at step 6.
 
 ## 1. Layout on the host
 
-The webroot serves `public/` only. Everything else sits above it, unreachable over HTTP.
+The webroot serves `public/` only. Everything else — the config, the poller, the scoring layer, the
+raw payloads — sits above it and is unreachable over HTTP.
 
 ```
 /home/USER/
-├── config.php                 ← the real config. Never in git.
+├── config.php                 ← the real config. Never in git. chmod 600.
 ├── logs/
 │   └── divergence.log
 └── divergence/                ← the repo
     ├── poller/
     ├── scoring/
     ├── lib/
+    ├── mcp/
     ├── sql/
+    ├── bin/
     └── public/                ← document root points here
 ```
 
-If the host cannot point a document root at a subdirectory, `public/` contents go to
-`public_html/` and the repo sits beside it — but the config file stays outside either way.
+**If the host cannot point a document root at a subdirectory** — many cPanel accounts cannot, for the
+primary domain — put the contents of `public/` into `public_html/` and the repo beside it, then fix
+the four `require __DIR__ . '/../lib/...'` paths in `public_html/bootstrap.php` to point at wherever
+the repo landed. The config file stays outside either way.
+
+The cleaner alternative on cPanel is to add the site as a **subdomain** and set its document root to
+`/home/USER/divergence/public`, which needs no path edits at all.
 
 ## 2. Database
 
-- Create the database and a user with only the privileges needed (`SELECT, INSERT, UPDATE, DELETE`,
-  plus DDL while migrating)
-- Raw payloads go in `LONGTEXT`, not a JSON column, so MySQL 5.6 is enough (D11)
-- `mysql -u USER -p DB < sql/001_init.sql` — the recording core. Enough to start recording
-- `mysql -u USER -p DB < sql/002_derived.sql` — the derived tables. Only `bin/extract.php` needs
-  these, so if anything about them goes wrong, apply 001 and start recording anyway
+- Create the database and a user with `SELECT, INSERT, UPDATE, DELETE`, plus DDL while migrating.
+- Raw payloads go in `LONGTEXT`, not a JSON column, so MySQL 5.6 is enough ([D11](decisions.md)).
 
-Both are safe to re-run: every statement is `IF NOT EXISTS`.
+```bash
+mysql -u USER -p DB < sql/001_init.sql    # the recording core. Enough to start recording.
+mysql -u USER -p DB < sql/002_derived.sql # extracted metrics and scores.
+```
+
+Both are safe to re-run: every statement is `IF NOT EXISTS`. Apply 001 first and start recording even
+if anything about 002 goes wrong — the derived tables are rebuildable from raw payloads, and the
+fetching is the half that cannot be caught up on later.
+
+**Sizing.** At the documented cadence, roughly 2,500 market rows and 250,000 asset rows over three
+weeks — around 100–150 MB with indexes. Comfortable on shared hosting, but check the account quota
+before assuming it.
 
 ## 3. Config
 
@@ -48,103 +59,144 @@ cp divergence/config.example.php /home/USER/config.php
 chmod 600 /home/USER/config.php
 ```
 
-The config loader searches `$DIVERGENCE_CONFIG`, then `../config.php` relative to the repo root,
-then `./config.php`. The layout above hits the second, which is why the repo sits one level below
-the config.
+The loader searches `$DIVERGENCE_CONFIG`, then `../config.php` relative to the repo root, then
+`./config.php`. The layout above hits the second, which is why the repo sits one level below the
+config.
 
 Verify it is not web-reachable: requesting it over HTTP must 404. `bin/preflight.php` also asserts
 the resolved config path is not under `public/`.
 
 ## 4. Verify PHP CLI can reach the API
 
-Before the cron entry exists. From an SSH session on the host, not a laptop:
+Before any cron entry exists, from an SSH session **on the host** — a laptop reaching the API proves
+nothing about cPanel:
 
 ```bash
 /usr/local/bin/php /home/USER/divergence/bin/preflight.php
 /usr/local/bin/php /home/USER/divergence/bin/verify-endpoints.php --save-fixtures
 /usr/local/bin/php /home/USER/divergence/poller/run.php --once
 /usr/local/bin/php /home/USER/divergence/bin/extract.php --verbose
+/usr/local/bin/php /home/USER/divergence/bin/score.php --verbose
 ```
 
-`preflight.php` checks the PHP version and extensions, DNS, a raw TLS connect, an authenticated
-call, the MySQL connection and INSERT grant, and the log directory. If outbound HTTPS is blocked for
-CLI, this is where it surfaces — see `open-questions.md` item 5.
+`preflight.php` checks the PHP version and extensions, DNS, a raw TLS connect, an authenticated call,
+the MySQL connection and INSERT grant, and the log directory. **If outbound HTTPS is blocked for CLI,
+this is where it surfaces** — some hosts firewall CLI differently from the web SAPI.
 
-`verify-endpoints.php` then settles which endpoints the plan permits, costs about 20 credits, and
-with `--save-fixtures` leaves real payloads in `tests/fixtures/live/`. The extraction layer is
-already built against the documented shapes, so the thing to do with those payloads is run the
-tests against them: `php tests/run.php extract`, re-pointed at `live/`. Each failure is a place
-where the documentation and the API disagree.
+`verify-endpoints.php` settles which endpoints the plan permits, costs about 6 credits, and with
+`--save-fixtures` leaves real payloads in `tests/fixtures/live/`. Run the tests against them:
+`php tests/run.php` — each failure is a place where the documentation and the API disagree. If the
+plan differs from the one this repo was built against, update `endpoint_access_results()` in
+`lib/endpoints.php`; everything downstream follows from that one table.
 
-The `extract.php --verbose` run then shows, per payload, what was read and what was skipped and
-why. It writes no derived rows for a payload it does not understand — it records the reason instead,
-and `bin/health.php` surfaces it.
-
-The `--once` run prints what it fetched and what it wrote. `--dry-run` alongside it fetches and
-reports without writing.
+`--once` prints what it fetched and what it wrote. `--dry-run` alongside it fetches and reports
+without writing.
 
 ## 5. Cron
 
-cPanel → Cron Jobs. Three entries.
+cPanel → Cron Jobs. **Four entries.**
 
 ```
-*/10 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
-*/30 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * *    /usr/local/bin/php /home/USER/divergence/poller/run.php --market  >> /home/USER/logs/divergence.log 2>&1
+*/30 * * * *    /usr/local/bin/php /home/USER/divergence/poller/run.php --assets  >> /home/USER/logs/divergence.log 2>&1
 7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
+12,42 * * * *   /usr/local/bin/php /home/USER/divergence/bin/score.php --quiet --limit=500      >> /home/USER/logs/divergence.log 2>&1
 ```
 
-**The cadence is set by the credit budget, not by preference.** The Basic plan allows 15,000
-credits a month (D14). A market run costs 4 credits and an asset run 1, so 10-minute/30-minute
-sampling costs about 624 a day — roughly 11,100 for the cycle, a quarter of the budget spare. The
-originally documented 5-minute/15-minute cadence costs ~1,250 a day and runs the budget dry in
-twelve days, mid-hackathon. Do not raise it without redoing that arithmetic; `bin/health.php`
-prints the remaining headroom in days on every run.
+**The cadence is set by the credit budget, not by preference.** The Basic plan allows 15,000 credits a
+month ([D14](decisions.md)). A market run costs 4 credits and an asset run 1, so 10/30-minute sampling
+is about 624 a day — roughly 11,100 for a three-week cycle, a quarter of the budget spare. The
+originally documented 5/15-minute cadence costs ~1,250 a day and runs the budget dry in twelve days.
+Do not raise it without redoing that arithmetic; `bin/health.php` prints the remaining headroom in
+days on every run.
 
-The extractor's entry is offset (`7,27,47`) rather than `*/20` so it never lands on the same minute
-as either poller tick.
+**Why three jobs and not one.** The extractor and the scorer cost no credits and touch no network, so
+a slow or failing one must never be able to delay a fetch — the fetch is the part that cannot be
+caught up on later. Their minutes are offset (`7,27,47` and `12,42`) rather than `*/20` so they never
+land on the same tick as a poller run, which matters on a host that limits concurrent processes.
 
-The extractor is separate from the poller on purpose. It costs no credits and touches no network,
-so a slow or failing extraction must never be able to delay a fetch — the fetch is the part that
-cannot be caught up on later. Running it at an interval that does not divide the poller's also keeps
-the two off the same tick on a host that limits concurrent processes.
+**Notes:**
 
-`--limit` caps one run's work so a tick stays short on shared hosting; anything left over is picked
-up by the next one, oldest first.
+- Absolute paths for both the binary and the script. Cron's `PATH` is not a login shell's. Find the
+  CLI binary with `which php` over SSH — it is often `/usr/local/bin/php` but may be an `ea-php83`
+  path, and it is frequently **not** the same binary the web server uses.
+- Every job takes a lock, so an overrunning run makes the next tick skip rather than pile up.
+- Exit codes: `0` fine · `1` finished with problems · `2` nothing recorded · `3` could not start.
+- `>> ... 2>&1` so failures land in the log rather than an email nobody reads.
+- Not a `wget` to a URL: that inherits HTTP timeouts and creates a public endpoint needing protection.
+- Confirm the host's minimum cron interval before assuming `*/10` is honoured. Most allow every
+  minute; some enforce a 5 or 15 minute floor. A 15-minute floor is still fine for this product.
 
-Notes:
-- Absolute paths for both the binary and the script. Cron's `PATH` is not a login shell's.
-- The poller takes a per-scope lock in the system temp directory, so if a run overruns its tick the
-  next one skips with exit code 3 rather than piling up behind it.
-- Exit codes: 0 all recorded · 1 some failed · 2 nothing recorded · 3 could not start.
-- `>> ... 2>&1` so failures land in the log rather than in an email nobody reads.
-- Not a `wget` to a URL: that inherits HTTP timeouts and creates a public endpoint needing
-  protection.
-- Confirm the host's minimum interval before assuming `*/5` is honoured.
-- `bin/extract.php` takes its own lock, so a long rebuild and a scheduled run cannot collide.
+### Memory
 
-## 6. Confirm it is recording
+`bin/extract.php` streams payloads one at a time precisely so `--limit` does not drive memory
+([D19](decisions.md)) — the batching version needed ~300MB at `--limit=2000` and died on the default
+128MB. Verified to complete a full 2000-row batch under `memory_limit=128M`. If the host is tighter
+than that, lower `--limit`; it changes throughput, not peak memory.
 
-Wait ten minutes, then:
+## 6. The web app
+
+Point the document root at `public/` and open it. Nothing else is required — no build step, no asset
+pipeline, no `npm`.
+
+`public/.htaccess` sets a strict Content-Security-Policy, blocks direct requests for `bootstrap.php`
+and any stray `.sql`/`.md`/`.log`, disables directory listings, and refuses anything but GET and
+HEAD. **On nginx none of that applies** — put the equivalents in the server block, and at minimum
+deny `bootstrap.php` and everything outside `public/`.
+
+Until the first scores land, every page shows an honest empty state naming what is missing rather
+than an empty chart.
+
+## 7. Confirm it is recording
+
+Wait twenty minutes, then:
 
 ```sql
-SELECT count(*) AS samples, min(fetched_at) AS first, max(fetched_at) AS latest FROM raw_samples;
+SELECT count(*) samples, min(fetched_at) first, max(fetched_at) latest FROM raw_samples;
 SELECT endpoint, http_status, count(*) FROM fetch_log GROUP BY 1, 2;
+SELECT count(*) FROM scores WHERE scope = 'market';
 ```
 
-Two consecutive runs landing, with no unexpected statuses, is the day-1 milestone.
+Two consecutive runs landing with no unexpected statuses, and a score row for each, is the milestone.
+`bin/health.php` says the same thing in one command.
 
-## 7. Ongoing checks
+## 8. The MCP server
 
-- `bin/health.php` — per-endpoint success rate, cadence, longest gap, extraction lag, credits
-  against the real limit reported by `/v1/key/info`, and the
-  budget. Exits non-zero when nothing has landed recently, so it also works as a watchdog:
-  `*/30 * * * * /usr/local/bin/php /home/USER/divergence/bin/health.php --stale=1800 || mail ...`
-- Credit consumption against the 15,000/month budget, from `fetch_log`
-- Log size; rotate if the host does not
+Nothing to deploy — it runs on demand over stdio. Point a client at it:
+
+```json
+{ "mcpServers": { "divergence": { "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] } } }
+```
+
+It reads the same config file and the same queries as the web app. No tool takes a write action.
+
+## 9. Ongoing checks
+
+- `bin/health.php` — per-endpoint success rate, cadence, longest gap, extraction lag, and credits
+  against the real limit reported by `/v1/key/info`. Exits non-zero when nothing has landed recently,
+  so it doubles as a watchdog:
+
+  ```
+  */30 * * * * /usr/local/bin/php /home/USER/divergence/bin/health.php --stale=1800 || mail -s "divergence stalled" you@example.com
+  ```
+
+- Credit consumption against the 15,000/month budget, from `fetch_log`.
+- Log size; rotate if the host does not.
+
+## Changing the method after deployment
+
+Weights, ranges and inputs live in `scoring/inputs.php`. To change one:
+
+1. Edit the declaration and bump `METHOD_VERSION`.
+2. `php bin/score.php --rebuild`
+
+The whole history is rescored from payloads already stored, the old series stays under its own
+version, and the method page updates itself because it renders from the same declaration. Changing
+the *parsing* works the same way: bump `EXTRACTOR_VERSION` and run `php bin/extract.php --rebuild`.
 
 ## Rollback
 
 The poller is append-only and the web app is read-only, so a bad deploy cannot corrupt history. If
-the poller breaks, the previous version is restored and the gap it left shows up as a gap. Derived
-tables are always rebuildable from `raw_samples`, so there is no state worth backing up separately
-beyond the database itself.
+the poller breaks, restore the previous version; the gap it left shows up as a gap. Derived tables
+are always rebuildable from `raw_samples`, so there is no state worth backing up beyond the database
+itself.

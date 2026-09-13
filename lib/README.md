@@ -7,7 +7,9 @@ Shared plumbing. Small, boring, no framework.
 | `config.php` | loads the real config from outside the webroot, fails loudly if absent; `redact()` for anything that might print a key |
 | `db.php` | PDO connection pinned to UTC, the two append-only writers, a schema presence check |
 | `http.php` | CMC client, response classification, rate limiting |
-| `endpoints.php` | the endpoint catalogue — one list shared by the prober, the verifier and the poller |
+| `endpoints.php` | the endpoint catalogue, and the measured plan access that gates everything downstream |
+| `extract.php` | pure, single-payload parsing: one stored response in, typed metric rows out |
+| `queries.php` | every read the web app and the MCP server make — both go through this one file |
 
 ## `cmc_outcome()` is the important one
 
@@ -23,9 +25,18 @@ Never judge a CMC response by its HTTP status alone. Two behaviours make the nai
 `unauthorized`, `forbidden`, `not_found`, `bad_request`, `rate_limited`, `server_error`,
 `no_response`. `cmc_path_exists()` reduces that to the existence question.
 
-The 30 requests/minute limit lives in `RateLimiter`, enforced once, rather than in each caller. It
+The rate limit lives in `RateLimiter`, enforced once, rather than in each caller. It
 spaces calls evenly rather than bursting and sleeping, because a shared host will kill a long
 sleeping process.
+
+## Why `queries.php` is shared rather than duplicated
+
+The web app and the MCP server are supposed to answer identically. The only way to guarantee that is
+for them to run the same SQL, so neither writes a query of its own. D8 describes the MCP layer as a
+thin wrapper over the queries the web app already needs; this file is what makes that true rather
+than aspirational.
+
+Nothing in it writes. The only writer in the system is cron.
 
 ## Logging
 

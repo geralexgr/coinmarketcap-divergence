@@ -1,0 +1,234 @@
+<?php
+/**
+ * Shared setup for every page and endpoint under public/.
+ *
+ * The web app is read-only. There is no write path anywhere in this directory: the only
+ * writer in the system is cron, which means a bad request cannot corrupt history and a
+ * page can be cached, mirrored or served from a stale replica without risk.
+ *
+ * This file is under the webroot but is never served: it emits nothing on its own, and
+ * `.htaccess` blocks direct requests for it. Only `index.php`, `assets.php`,
+ * `method.php` and `api/*.php` are entry points.
+ */
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../lib/config.php';
+require_once __DIR__ . '/../lib/db.php';
+require_once __DIR__ . '/../lib/endpoints.php';
+require_once __DIR__ . '/../lib/queries.php';
+require_once __DIR__ . '/../scoring/inputs.php';
+require_once __DIR__ . '/../scoring/normalise.php';
+require_once __DIR__ . '/../scoring/score.php';
+require_once __DIR__ . '/../scoring/recompute.php';
+
+/**
+ * Connect, or hand back the reason.
+ *
+ * A page that cannot reach the database says so plainly rather than showing a 500 or,
+ * worse, an empty chart that reads as a market with nothing happening in it.
+ *
+ * @return array{0:?PDO, 1:?string}
+ */
+function web_connect(): array
+{
+    [$config, $error] = try_load_config();
+    if ($config === null) {
+        return [null, $error ?? 'No config file found.'];
+    }
+
+    try {
+        return [db_connect($config), null];
+    } catch (Throwable $e) {
+        return [null, 'Cannot reach the database.'];
+    }
+}
+
+/**
+ * One query parameter, constrained to a known set.
+ *
+ * Written as a helper because the obvious inline form has a bug in it:
+ *
+ *     $sort = in_array($_GET['sort'] ?? 'gap', $allowed, true) ? (string) $_GET['sort'] : 'gap';
+ *
+ * When the parameter is absent the default passes the check, so the *true* branch runs
+ * and reads the key that is not there. Every page had a version of it. Doing the
+ * defaulting once, in one place, is what stops the fifth page repeating it.
+ *
+ * @param array<int,string> $allowed
+ */
+function query_choice(string $key, array $allowed, string $fallback): string
+{
+    $value = isset($_GET[$key]) && is_string($_GET[$key]) ? $_GET[$key] : $fallback;
+
+    return in_array($value, $allowed, true) ? $value : $fallback;
+}
+
+/** HTML escaping, short enough to use everywhere it is needed. */
+function h(?string $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/** A score, to the precision the product actually claims. */
+function fmt_score(?float $value): string
+{
+    return $value === null ? '—' : number_format($value, 0);
+}
+
+/** A signed figure, where the sign is the point. */
+function fmt_signed(?float $value, int $decimals = 0): string
+{
+    if ($value === null) {
+        return '—';
+    }
+    // A true minus sign, not a hyphen: it aligns with the tabular figures either side
+    // of it. Double-quoted, because the escape does nothing in a single-quoted string.
+    return ($value > 0 ? '+' : ($value < 0 ? "\u{2212}" : '')) . number_format(abs($value), $decimals);
+}
+
+/**
+ * A raw input in its native unit.
+ *
+ * Turnover is a small fraction, derivative share is a multiple and the fear and greed
+ * index is a whole number. One format for all three would render two of them as zero.
+ */
+function fmt_native(?float $value, string $unit): string
+{
+    if ($value === null) {
+        return 'no reading';
+    }
+
+    return match (true) {
+        str_contains($unit, 'index')          => number_format($value, 0),
+        str_contains($unit, 'x spot')         => number_format($value, 2) . '×',
+        str_contains($unit, '%')              => number_format($value, 2) . '%',
+        str_contains($unit, 'share'), str_contains($unit, 'volume / market cap'),
+        str_contains($unit, 'change'), str_contains($unit, 'HHI')
+                                              => number_format($value, 4),
+        str_contains($unit, 'position')       => number_format($value, 0),
+        default                               => number_format($value, 2),
+    };
+}
+
+/** A UTC timestamp as the app writes them: short, and always marked UTC. */
+function fmt_time(?string $utc, bool $withDate = true): string
+{
+    if ($utc === null) {
+        return '—';
+    }
+    $ts = strtotime($utc . ' UTC');
+    if ($ts === false) {
+        return '—';
+    }
+
+    return gmdate($withDate ? 'j M, H:i' : 'H:i', $ts) . ' UTC';
+}
+
+/** "4 minutes ago" — a description of the recording, never of the market. */
+function fmt_ago(?string $utc): string
+{
+    if ($utc === null) {
+        return 'never';
+    }
+    $ts = strtotime($utc . ' UTC');
+    if ($ts === false) {
+        return 'never';
+    }
+
+    $seconds = max(0, time() - $ts);
+    return match (true) {
+        $seconds < 90      => 'just now',
+        $seconds < 5400    => intdiv($seconds, 60) . ' min ago',
+        $seconds < 172800  => intdiv($seconds, 3600) . ' hours ago',
+        default            => intdiv($seconds, 86400) . ' days ago',
+    };
+}
+
+/** The header claim, live from `raw_samples`. */
+function recording_line(array $health): string
+{
+    if ($health['samples'] === 0) {
+        return 'not recording yet';
+    }
+
+    $since = $health['first_sample'] !== null
+        ? gmdate('j M', (int) strtotime($health['first_sample'] . ' UTC'))
+        : '—';
+
+    return sprintf('recording since %s, %s samples', $since, number_format($health['samples']));
+}
+
+/** @param array<string,mixed> $health */
+function render_head(string $title, string $active, array $health): void
+{
+    $nav = [
+        'market' => ['index.php', 'Market'],
+        'assets' => ['assets.php', 'Assets'],
+        'method' => ['method.php', 'Method'],
+    ];
+    ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?= h($title) ?> — Divergence</title>
+<meta name="description" content="The gap between what the crypto market is saying and what it has committed money to. A measurement, not a forecast.">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="page">
+  <header class="appbar">
+    <div class="wordmark">Divergence<span class="status"><?= h(recording_line($health)) ?></span></div>
+    <nav class="nav">
+      <?php foreach ($nav as $key => [$href, $label]): ?>
+        <?php if ($key === $active): ?><b><?= h($label) ?></b><?php else: ?><a href="<?= h($href) ?>"><?= h($label) ?></a><?php endif; ?>
+      <?php endforeach; ?>
+    </nav>
+  </header>
+<?php
+}
+
+function render_foot(): void
+{
+    ?>
+  <footer class="pagefoot">
+    <p>Every number on this site is a measurement of a condition that exists now, or existed at a
+       recorded past moment. Nothing here is advice, a recommendation, or a prediction. Source data
+       from the CoinMarketCap API; the <a href="method.php">method page</a> states exactly how each
+       figure is derived.</p>
+  </footer>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>
+<?php
+}
+
+/**
+ * What every page shows when there is nothing recorded yet.
+ *
+ * This is a real state, not an error: the recorder runs before anything can be scored,
+ * and a fresh deployment sits here until the first cron ticks land. Saying so is better
+ * than an empty chart, which reads as a measurement of a market where nothing is
+ * happening.
+ */
+function render_empty_state(string $reason, ?array $health = null): void
+{
+    ?>
+  <section class="panel empty">
+    <h1>Nothing to plot yet</h1>
+    <p><?= h($reason) ?></p>
+    <?php if ($health !== null && $health['samples'] > 0): ?>
+      <p class="muted"><?= number_format($health['samples']) ?> raw samples recorded, latest
+         <?= h(fmt_ago($health['latest_sample'])) ?>. Scores are written by
+         <code>bin/score.php</code>, which runs on its own cron entry.</p>
+    <?php else: ?>
+      <p class="muted">The recorder writes first and everything else reads from what it stored.
+         Once <code>poller/run.php</code> has landed a few samples and <code>bin/extract.php</code>
+         and <code>bin/score.php</code> have run, this page fills in.</p>
+    <?php endif; ?>
+  </section>
+<?php
+}

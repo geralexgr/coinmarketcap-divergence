@@ -24,7 +24,7 @@ function live_fixture(string $name): ?string
 }
 
 /** @return array<string,float> */
-function live_market(string $endpoint, string $file = null): ?array
+function live_market(string $endpoint, ?string $file = null): ?array
 {
     $body = live_fixture($file ?? $endpoint);
     if ($body === null) {

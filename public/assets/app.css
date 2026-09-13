@@ -1,0 +1,243 @@
+/*
+ * Divergence — the visual language from docs/ui-spec.md.
+ *
+ * It should read as an instrument, not a dashboard. Hairline rules instead of boxes and
+ * shadows, thin weights on the large figures, tabular numerals everywhere. No gradients,
+ * no glow, no crypto-dashboard neon.
+ *
+ * The two axis colours are load-bearing rather than decorative: once a reader learns
+ * blue = voice and rust = money, every chart, table cell and input row is readable
+ * without a legend. Nothing else in the palette is allowed to be either colour.
+ */
+
+:root {
+  --field:     #EEF1F0;
+  --surface:   #FFFFFF;
+  --ink:       #1B2227;
+  --graphite:  #6B7780;
+  --hairline:  #D3D9D7;
+  --hair-soft: #E5E9E8;
+  --voice:     #3A6EA5;
+  --money:     #A34428;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--field);
+  color: var(--ink);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 28px 72px;
+  background: var(--surface);
+  min-height: 100vh;
+}
+
+a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--hairline); }
+a:hover { border-bottom-color: var(--ink); }
+
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .88em;
+}
+
+/* ---------- header ---------- */
+
+.appbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hair-soft);
+  flex-wrap: wrap;
+}
+.wordmark { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+/* The claim the whole product rests on. Live from raw_samples, never written down. */
+.status { font-size: 12px; color: var(--graphite); margin-left: 12px; font-weight: 400; letter-spacing: 0; }
+.nav { display: flex; gap: 20px; font-size: 13px; color: var(--graphite); }
+.nav a { border-bottom: none; }
+.nav a:hover { color: var(--ink); }
+.nav b { font-weight: 600; color: var(--ink); border-bottom: 2px solid var(--money); padding-bottom: 3px; }
+
+/* ---------- market stage ---------- */
+
+.stage { display: grid; grid-template-columns: 1fr 260px; gap: 30px; padding: 24px 0 0; }
+.plotcol { min-width: 0; }
+
+.plothead { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+.plothead h2 { font-size: 15px; font-weight: 600; margin: 0; }
+
+.windows { display: flex; gap: 12px; font-size: 12px; color: var(--graphite); flex-wrap: wrap; }
+.windows a { border-bottom: none; }
+.windows a:hover { color: var(--ink); }
+.windows b { color: var(--ink); font-weight: 600; }
+
+.plotsub { font-size: 12.5px; color: var(--graphite); margin: 0 0 12px; max-width: 68ch; }
+.plotnote { font-size: 12px; color: var(--graphite); margin: 12px 0 0; max-width: 68ch; }
+
+.quadrant svg { width: 100%; height: auto; display: block; }
+
+/* The active quadrant is tinted rather than outlined: the reader should see where the
+   point is before reading any label. */
+.qfill  { fill: var(--money); opacity: .055; }
+.qline  { stroke: var(--hairline); stroke-width: 1; fill: none; }
+.qdash  { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 4; }
+.qname  { font-size: 8.4px; fill: var(--graphite); letter-spacing: .01em; }
+.qname.live { fill: var(--money); font-weight: 650; }
+.trail  { fill: none; stroke: var(--graphite); stroke-width: 1.2; opacity: .55; }
+.tdot   { fill: var(--graphite); opacity: .45; }
+.pin    { fill: var(--money); }
+.pinring { fill: none; stroke: var(--money); stroke-width: 1; opacity: .4; }
+.pinlab { font-size: 9.5px; font-weight: 650; fill: var(--ink); }
+.pintime { font-size: 8.4px; fill: var(--graphite); }
+.axname { font-size: 9px; font-weight: 600; fill: var(--ink); }
+.axname.v { fill: var(--voice); }
+.axname.m { fill: var(--money); }
+.axhint { font-size: 8.4px; fill: var(--graphite); }
+.axtick { font-size: 8px; fill: var(--graphite); }
+
+/* ---------- readout ---------- */
+
+.readout { display: flex; flex-direction: column; gap: 18px; border-left: 1px solid var(--hair-soft); padding-left: 24px; }
+.bigcap { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.bignum { font-size: 52px; font-weight: 300; letter-spacing: -.04em; line-height: .9; color: var(--money); }
+.bignum small { font-size: 16px; color: var(--graphite); font-weight: 400; letter-spacing: 0; }
+.bignote { font-size: 12.5px; color: var(--graphite); margin: 10px 0 0; line-height: 1.45; }
+.provenance { font-size: 11.5px; color: var(--graphite); margin: 8px 0 0; }
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--hair-soft); border-bottom: 1px solid var(--hair-soft); }
+.pair > div { padding: 12px 0; }
+.pair > div + div { padding-left: 16px; border-left: 1px solid var(--hair-soft); }
+.pk { font-size: 12px; font-weight: 600; }
+.pk.v { color: var(--voice); }
+.pk.m { color: var(--money); }
+.pv { font-size: 26px; font-weight: 400; letter-spacing: -.02em; line-height: 1.1; margin-top: 2px; }
+.pd { font-size: 11.5px; color: var(--graphite); }
+
+.inputs h3 { font-size: 12.5px; font-weight: 600; margin: 0 0 2px; }
+.inputs > p { font-size: 11.5px; color: var(--graphite); margin: 0 0 8px; }
+
+/* Every input row carries its endpoint and sample minute. This is the row a judge
+   checks against CoinMarketCap, so provenance is part of the layout, not a tooltip. */
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12.5px; padding: 6px 0; border-top: 1px solid var(--hair-soft); }
+.row span { color: var(--graphite); }
+.row span em { display: block; font-style: normal; font-size: 10.5px; opacity: .8; }
+.row i { font-style: normal; font-weight: 600; white-space: nowrap; }
+.row i.v { color: var(--voice); }
+.row i.m { color: var(--money); }
+
+/* ---------- tables ---------- */
+
+.tablewrap { margin-top: 30px; border-top: 1px solid var(--hairline); padding-top: 16px; }
+.tablewrap h2 { font-size: 15px; font-weight: 600; margin: 0; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+th { font-size: 11.5px; color: var(--graphite); font-weight: 500; text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+th a { border-bottom: none; }
+th a:hover { color: var(--ink); }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+td { font-size: 13.5px; padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--hair-soft); }
+td.reading, th.reading { text-align: left; padding-right: 0; }
+td.muted { color: var(--graphite); }
+
+.tick { font-weight: 650; }
+.tick a { border-bottom: none; }
+.tick a:hover { border-bottom: 1px solid var(--ink); }
+.tick em { display: block; font-style: normal; font-size: 11px; font-weight: 400; color: var(--graphite); }
+
+.gap { font-weight: 650; }
+.gap.m { color: var(--money); }
+.gap.v { color: var(--voice); }
+.quad-tag { font-size: 12px; color: var(--graphite); }
+
+.tfoot { font-size: 12px; color: var(--graphite); margin-top: 14px; max-width: 72ch; }
+
+/* ---------- asset detail ---------- */
+
+.assethead { padding-top: 22px; }
+.crumb { font-size: 12px; color: var(--graphite); margin: 0 0 8px; }
+.assethead h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; margin: 0; }
+.assethead h1 span { font-size: 16px; font-weight: 400; color: var(--graphite); margin-left: 8px; }
+.muted { color: var(--graphite); font-size: 12.5px; }
+
+/* ---------- method page ---------- */
+
+.prose { max-width: 76ch; padding-top: 24px; }
+.prose h1 { font-size: 28px; font-weight: 600; letter-spacing: -.025em; margin: 0 0 12px; }
+.prose h2 { font-size: 17px; font-weight: 600; margin: 36px 0 8px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.prose h3 { font-size: 14px; font-weight: 600; margin: 24px 0 6px; }
+.prose p { margin: 0 0 12px; }
+.lede { font-size: 16px; color: var(--graphite); }
+.lede b { color: var(--ink); font-weight: 600; }
+
+/* The limits go above the fold, not in a footnote. */
+.callout { border-left: 2px solid var(--money); padding: 2px 0 2px 18px; margin: 22px 0; }
+.callout h2 { border-top: none; padding-top: 0; margin: 0 0 6px; font-size: 14px; }
+.callout p { font-size: 13.5px; color: var(--graphite); margin: 0; }
+
+.formula {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  background: var(--field);
+  padding: 12px 16px;
+  border-left: 2px solid var(--hairline);
+}
+
+.prose .method { margin: 10px 0 20px; }
+.method td { font-size: 12.5px; vertical-align: top; text-align: left; padding: 9px 10px 9px 0; }
+.method th { text-align: left; }
+.method td em { display: block; font-style: normal; font-size: 11.5px; color: var(--graphite); margin-top: 2px; }
+.method tr.unavailable td { opacity: .5; }
+.method.quadrants th { font-weight: 600; color: var(--ink); }
+
+.tag { font-size: 11px; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 2px; white-space: nowrap; }
+.tag.ok { border-color: var(--voice); color: var(--voice); }
+.tag.no { border-color: var(--money); color: var(--money); }
+.tag.off { color: var(--graphite); }
+
+.stat { font-size: 13.5px; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--hair-soft); border: 1px solid var(--hair-soft); margin: 14px 0 20px; }
+.stats > div { background: var(--surface); padding: 12px 14px; }
+.stats dt { font-size: 11px; color: var(--graphite); }
+.stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 400; letter-spacing: -.02em; }
+
+/* ---------- empty state ---------- */
+
+/* A fresh deployment sits here until cron lands. It is a real state, not an error: an
+   empty chart would read as a measurement of a market where nothing is happening. */
+.empty { padding: 60px 0; max-width: 60ch; }
+.empty h1 { font-size: 22px; font-weight: 600; margin: 0 0 10px; }
+.empty p { color: var(--graphite); font-size: 14px; }
+
+/* ---------- footer ---------- */
+
+.pagefoot { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.pagefoot p { font-size: 11.5px; color: var(--graphite); max-width: 78ch; margin: 0; }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 860px) {
+  .page { padding: 20px 16px 56px; }
+  .stage { grid-template-columns: 1fr; gap: 22px; }
+  .readout { border-left: none; padding-left: 0; border-top: 1px solid var(--hair-soft); padding-top: 18px; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  /* Wide tables scroll inside themselves rather than pushing the page sideways. */
+  .tablewrap { overflow-x: auto; }
+  .screener { min-width: 560px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

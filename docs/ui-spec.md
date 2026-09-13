@@ -1,9 +1,10 @@
 # UI spec
 
-Mockup: [`mockups/dashboard-mockup.html`](mockups/dashboard-mockup.html) — open it in a browser.
-Rendered: [`mockups/ui-market-view.png`](mockups/ui-market-view.png).
+Built in `public/`. Original mockup: [`mockups/dashboard-mockup.html`](mockups/dashboard-mockup.html).
 
-Four screens. The first one is the product; the other three exist to make it credible.
+Three screens and four JSON endpoints. The first screen is the product; the rest exist to make it
+credible. The "lead and lag" screen this spec originally described is **not built** — see the note
+at the bottom.
 
 ---
 
@@ -13,7 +14,7 @@ Four screens. The first one is the product; the other three exist to make it cre
 decoration — it is the claim the whole product rests on, and it is a live count from
 `raw_samples`.
 
-**Nav:** Market · Assets · Lead and lag · Method.
+**Nav:** Market · Assets · Method.
 
 **Every number** links to its provenance: the logical endpoint and the minute it was sampled.
 
@@ -34,19 +35,29 @@ One point per sample over the selected window, joined into a trail, with the cur
 and time-stamped. The trail is the moment that makes the product obvious in three seconds, and it
 only exists because of the recorder.
 
-Window selector: 24h · 7d · all.
+Window selector: 24h · 7d · 30d · All.
 
-Gaps in recording break the trail. No interpolation.
+Gaps in recording break the trail. No interpolation. The break is detected from the data — any
+interval more than 2.5x the median — rather than from the cron schedule, because the schedule is an
+intention and the samples are what happened.
+
+The chart is hand-drawn SVG, not a charting library: it is about 120 lines, a library would be the
+only third-party dependency in the project, and none of them break a line at a gap without being
+fought about it.
 
 **Right — the readout.**
 - Divergence, large, as a magnitude out of 100, with one sentence stating the direction — money ahead
   of narrative, or narrative ahead of money.
 - Voice and Money side by side, each with its week-over-week change.
 - "What went into it": each raw input at its current value, in its native unit, labelled by axis
-  colour. This is the row a judge checks against CoinMarketCap.
+  colour, **with the endpoint it came from and the minute it was sampled underneath it**. This is the
+  row a judge checks against CoinMarketCap, so provenance is part of the layout rather than a tooltip.
+- A line stating how many inputs each axis actually used. On the Basic plan Voice uses one of three,
+  and the screen says so next to the chart rather than letting a stepped line read as a flat market.
 
-**Below — the per-asset table.** Symbol, Voice, Money, Gap, a 7-day sparkline, and the quadrant
-reading. Sorted by gap magnitude by default. This is the screener.
+**Below — the per-asset table.** Symbol, Voice, Money, Gap and the quadrant reading, sorted by gap
+magnitude, linking through to the full screener. The sparkline in the mockup is not built: it needs
+a query per row and earns less than it costs.
 
 Footer note, verbatim from the mockup: every number is a measurement of a condition that exists right
 now; nothing on this screen predicts anything.
@@ -59,40 +70,63 @@ The per-asset table, full length, with the top ~100.
 
 - Sortable on every column
 - Filter by quadrant
-- Click through to a single-asset view: that asset's own quadrant trail, its inputs, and its
-  sampling history
+- Click through to a single-asset view: that asset's own quadrant trail and its recorded quadrant
+  crossings
+
+Per-asset scores rank each asset against **the rest of the universe at the same instant**, not
+against its own past (D17). The page says so and links to the method page, because it is a different
+measurement from the market chart and mixing the two would mislead.
 
 ---
 
-## 3. Lead and lag
-
-Only built if the recorded history is long enough to say something honest — with three weeks of data
-this may end up as a single modest chart, and that is an acceptable outcome.
-
-The measured question: when the two scores have moved apart in the recorded past, which one moved
-first? Stated as a description of recorded history, with the sample count it is based on, and no
-claim that it generalises.
-
-If the history cannot support it, the screen says so rather than showing a weak number confidently.
-
----
-
-## 4. Method
+## 3. Method
 
 The credibility screen, and the reason the tool is not a black box.
 
-- The two axes and every input feeding each
-- The current weights, and the version number
-- The normalisation basis, both ranges, and **the switchover date** with its reason
-- Which CoinMarketCap endpoints are used, with a real request/response example
-- Recording health: samples, longest gap, failure rate — from `fetch_log`
+Rendered directly from `scoring/inputs.php` — the same declaration the scorer runs from — so the
+page cannot describe a method the code does not implement.
+
+- What the API plan permits, **first**, before the method itself. Ten of seventeen endpoints answer
+  403 and a method page that buried that would be worth less than none.
+- The two axes and every input feeding each, including the forbidden ones, marked unavailable
+- The current weights, ranges and the version number
+- All three normalisation bases and **the switchover date**, computed from this deployment's own
+  first sample
+- Which CoinMarketCap endpoints are used, with live call and credit counts from `fetch_log`
+- Recording health: samples, longest gap, failure rate, credits — live
 - A plain statement that the tool gives no advice and makes no predictions
+
+---
+
+## Not built: lead and lag
+
+The original spec had a fourth screen asking which axis moved first when the two diverged in the
+recorded past.
+
+It is not built, and the reason is the honest one: with the Voice axis at daily resolution (D16), a
+lead/lag measurement between a daily series and a ten-minute series would be an artefact of the
+sampling rates rather than a fact about the market. It would look like a finding and be nothing of
+the kind. It becomes worth building the day the Voice axis has more than one input.
+
+---
+
+## JSON endpoints
+
+The same data the pages render, read-only, under `public/api/`:
+
+| Endpoint | Returns |
+|---|---|
+| `api/market.php` | current reading, with the raw inputs and their provenance |
+| `api/series.php?scope=&window=` | the trail, with gaps as an explicit list |
+| `api/assets.php?sort=&quadrant=` | the screener |
+| `api/method.php` | the method declaration |
 
 ---
 
 ## Visual language
 
-Taken from the mockup and worth keeping — it reads as an instrument rather than a dashboard.
+Taken from the mockup and kept — it reads as an instrument rather than a dashboard. The tokens are
+CSS custom properties in `public/assets/app.css`.
 
 | Token | Value | Use |
 |---|---|---|
