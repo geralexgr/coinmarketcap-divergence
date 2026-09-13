@@ -41,9 +41,11 @@ anyone, at any later date.
 Every input in the right-hand column carries the endpoint it came from and the minute it was
 sampled, so any number here can be checked against CoinMarketCap directly.
 
-*Captured from a local run against seeded history, so that the trail and the week-over-week figures
-have something to show. The live deployment records the same way and its own trail is building now;
-every number in the panel is produced by the same code path either way.*
+*This one is from a local run against seeded history, because the live deployment started recording
+on 13 September and its Voice axis has not stepped yet — the fear and greed index updates once a
+day, so the live trail is currently a straight horizontal line. A picture of a straight line would
+say less about the product than this does. The two shots below are live, and this one gets replaced
+the moment the real trail has shape.*
 
 ### The screener
 
@@ -52,17 +54,19 @@ every number in the panel is produced by the same code path either way.*
 The same two measurements per asset, sorted by the gap between them. These axes exist nowhere on
 CoinMarketCap's own site.
 
-Stablecoins are excluded by default and the page says so. High turnover with no narrative is what a
-stablecoin *is*, so ranking them by that gap measures a definition rather than a condition — they
-were four of the top nine rows until [D21](docs/decisions.md). One click shows them again.
+*Live, from the deployment.* Stablecoins are excluded by default and the page says so: high turnover
+with no narrative is what a stablecoin *is*, so ranking them by that gap measures a definition rather
+than a condition — they were four of the top nine rows until [D21](docs/decisions.md). One click
+shows them again.
 
 ### The method page
 
 ![The method page](docs/screenshots/method.png)
 
-Rendered directly from `app/scoring/inputs.php` — the same declaration the scorer runs from — so the
-page cannot describe a method the code does not implement. It states what the API plan forbids
-*before* it states the method.
+*Live, from the deployment.* Rendered directly from `app/scoring/inputs.php` — the same declaration
+the scorer runs from — so the page cannot describe a method the code does not implement. It states
+what the API plan forbids *before* it states the method, and its recording-health figures come
+straight from `fetch_log`.
 
 ---
 
