@@ -357,28 +357,34 @@ Seven tools, none of which takes a write action. Surface: [`docs/mcp-tools.md`](
 
 ## CoinMarketCap endpoints used
 
-Two different questions, answered by two different scripts. **Does the path exist?** —
-`app/bin/probe-paths.php`, no key needed. **May this plan call it?** — `app/bin/verify-endpoints.php`, needs
-the key. Both were run; the results are in [`docs/endpoint-access.md`](docs/endpoint-access.md) and
-encoded in `endpoint_access_results()` so the poller cannot schedule a forbidden endpoint by
-accident.
+Ten endpoints, every one of them polled and feeding a score. Verified against the live API rather
+than read off the documentation — `app/bin/verify-endpoints.php` measures what the key may actually
+call, and `endpoint_access_results()` encodes the result so the poller cannot schedule something it
+cannot reach.
 
-| Axis | Endpoint | Used for | Access |
+| Axis | Endpoint | Used for | Credits |
 |---|---|---|---|
-| Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | ✅ |
-| **Money** | `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | **open interest, funding rate, basis** | ✅ |
-| **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations, 100 assets per credit** | ✅ |
-| **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest | ✅ |
-| Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share of activity | ✅ |
-| Money | `/v1/exchange/assets` | exchange reserve level, and its movement | ✅ |
-| Money | `/v2/cryptocurrency/quotes/latest` | per-asset turnover | ✅ |
-| Both | `/v1/cryptocurrency/listings/latest` | the asset universe and its per-asset inputs | ✅ |
-| Ops | `/v1/key/info` | credit budget, at no credit cost | ✅ |
-| Voice | `/v1/community/trending/{topic,token}` | trending rank and its churn | 403 |
-| Voice | `/v1/cryptocurrency/trending/{latest,most-visited,gainers-losers}` | attention before a trade | 403 |
-| Voice | `/v1/content/{latest,posts/top}` | community post volume | 403 |
-| Money | `/v1/exchange/listings/latest` | concentration of volume across venues | 403 |
-| Money | `/v2/cryptocurrency/market-pairs/latest` | derivative pair volume | 403 |
+| Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | 1 |
+| **Money** | `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | **open interest, funding rate, basis** | 1 |
+| **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations** — 100 assets per credit | 1 |
+| **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest | 1 |
+| Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share of activity | 1 |
+| Money | `/v1/exchange/assets` | exchange reserve level, and its movement | 1 |
+| Money | `/v2/cryptocurrency/quotes/latest` | per-asset turnover | 1 |
+| Both | `/v1/cryptocurrency/listings/latest` | the asset universe and its per-asset inputs | 1 |
+| Ops | `/v1/key/info` | credit budget and rate limit, at no credit cost | 0 |
+
+A further ten paths were probed and are **forbidden on this key** — every trending, community and
+content endpoint, plus spot exchange listings and the v2 market-pairs endpoint. They are not listed
+here because nothing uses them, but they are not hidden either: the full measured table is in
+[`docs/endpoint-access.md`](docs/endpoint-access.md), the cost to the method is described
+[above](#read-this-second-what-the-api-plan-costs-the-method), and they stay declared in
+`app/scoring/inputs.php` at their intended weights so a plan change needs no code.
+
+**Two different questions, two different scripts.** *Does the path exist?* —
+`app/bin/probe-paths.php`, no key and no credits. *May this key call it?* —
+`app/bin/verify-endpoints.php`, needs the key. Conflating them is how this project spent two days
+believing the derivatives endpoints did not exist.
 
 ### A real request and response
 
