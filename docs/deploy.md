@@ -12,10 +12,9 @@ raw payloads — sits above it and is unreachable over HTTP.
 
 ```
 /home/USER/
-├── config.php                 ← the real config. Never in git. chmod 600.
-├── logs/
-│   └── divergence.log
-└── divergence/                ← the repo
+└── divergence/                ← the repo. One self-contained folder.
+    ├── config.php             ← the real config. Never in git. chmod 600.
+    ├── logs/                  ← created on first run
     ├── app/                   ← NEVER web-reachable
     │   ├── poller/
     │   ├── scoring/
@@ -24,6 +23,10 @@ raw payloads — sits above it and is unreachable over HTTP.
     │   └── bin/
     └── public/                ← document root points here
 ```
+
+Nothing is written outside this folder: the config sits at its root (outside the webroot, because
+the webroot is `public/`), and logs default to `logs/` inside it. Deleting the folder removes the
+deployment, leaving only the database.
 
 The `app/` and `public/` split is the deployment boundary. `app/` carries an `.htaccess` denying
 everything, and the web app refuses to start if it finds the config file inside the document root —
@@ -112,10 +115,10 @@ without writing.
 cPanel → Cron Jobs. **Four entries.**
 
 ```
-*/10 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --market  >> /home/USER/logs/divergence.log 2>&1
-*/30 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --assets  >> /home/USER/logs/divergence.log 2>&1
-7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
-12,42 * * * *   /usr/local/bin/php /home/USER/divergence/app/bin/score.php --quiet --limit=500      >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --market  >> /home/USER/divergence/logs/cron.log 2>&1
+*/30 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --assets  >> /home/USER/divergence/logs/cron.log 2>&1
+7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
+12,42 * * * *   /usr/local/bin/php /home/USER/divergence/app/bin/score.php --quiet --limit=500      >> /home/USER/divergence/logs/cron.log 2>&1
 ```
 
 **The cadence is set by the credit budget, not by preference.** The Basic plan allows 15,000 credits a

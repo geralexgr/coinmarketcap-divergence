@@ -148,8 +148,13 @@ if (is_array($config) && !empty($config['db_name'])) {
 // --- Log directory ----------------------------------------------------------
 if (is_array($config) && !empty($config['log_path'])) {
     $logDir = dirname((string) $config['log_path']);
-    $writable = is_dir($logDir) && is_writable($logDir);
-    check('Log directory writable', $writable, $writable ? $logDir : "{$logDir} (missing or read-only)", false);
+    // Absent is not a failure: the poller creates it on first run. Only an existing
+    // directory that cannot be written to, or an unwritable parent, is worth reporting.
+    $writable = is_dir($logDir) ? is_writable($logDir) : is_writable(dirname($logDir));
+    $detail = is_dir($logDir)
+        ? ($writable ? $logDir : "{$logDir} (read-only)")
+        : ($writable ? "{$logDir} (will be created on first run)" : "{$logDir} (parent not writable)");
+    check('Log directory writable', $writable, $detail, false);
 }
 
 // --- Summary ----------------------------------------------------------------

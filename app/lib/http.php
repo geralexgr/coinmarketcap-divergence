@@ -51,7 +51,10 @@ function cmc_get(array $config, string $path, array $query = []): array
     $errNo  = curl_errno($ch);
     $errStr = curl_error($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
+    // No curl_close(): it has done nothing since PHP 8.0 and is deprecated from 8.5,
+    // where calling it writes a deprecation line into every cron log. The handle is
+    // released when it goes out of scope.
+    unset($ch);
 
     $durationMs = (int) round((microtime(true) - $started) * 1000);
 

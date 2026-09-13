@@ -21,7 +21,7 @@ in your home directory is right.
 
 ```
 /home/USER/
-├── divergence/          ← extracted here
+├── divergence/          ← extracted here. Everything lives in this one folder.
 │   ├── app/
 │   ├── public/
 │   ├── docs/
@@ -79,7 +79,8 @@ It is not web-reachable there: the document root is `public/`, one level below i
 `public/` is served.
 
 Fill in the API key, and the database name, user and password. Then set permissions to **600** in
-File Manager.
+File Manager — **not 644**. On shared hosting 644 lets other accounts on the same server read your
+key and database password.
 
 If you would rather keep the config outside the repo folder entirely — worth it when you replace the
 whole folder on each update — put it one directory above instead. The loader checks there first.
@@ -121,13 +122,19 @@ If those three succeed, open the site. It will show a single point.
 cPanel → Cron Jobs. Four entries. Replace `/usr/local/bin/php` with whatever `which php` printed.
 
 ```
-*/10 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --market  >> /home/USER/logs/divergence.log 2>&1
-*/30 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --assets  >> /home/USER/logs/divergence.log 2>&1
-7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
-12,42 * * * *   /usr/local/bin/php /home/USER/divergence/app/bin/score.php --quiet --limit=500     >> /home/USER/logs/divergence.log 2>&1
+*/10 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --market  >> /home/USER/divergence/logs/cron.log 2>&1
+*/30 * * * *    /usr/local/bin/php /home/USER/divergence/app/poller/run.php --assets  >> /home/USER/divergence/logs/cron.log 2>&1
+7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
+12,42 * * * *   /usr/local/bin/php /home/USER/divergence/app/bin/score.php --quiet --limit=500     >> /home/USER/divergence/logs/cron.log 2>&1
 ```
 
-Create `/home/USER/logs/` first, or the redirect fails silently.
+Everything stays inside the deployment folder. `logs/` is created on the first run, so there is
+nothing to make by hand — but note the cron redirect is the shell's, not the app's, so the very
+first cron tick needs the directory to exist. Running step 7 by hand first creates it.
+
+**The PHP binary matters.** Cron's `PATH` is not a login shell's, and the CLI binary is often not
+the one the web server uses — on CloudLinux hosts it is typically `/opt/alt/php83/usr/bin/php`.
+Use whatever `which php` printed in step 6.
 
 **Do not raise the cadence.** It is set by the credit budget, not by preference: 10 and 30 minutes
 costs about 624 credits a day against a 15,000/month plan. The 5-minute cadence exhausts the budget

@@ -23,8 +23,11 @@ return [
     'db_pass'       => '',
 
     // Operational
-    // Set to null to disable file logging (cron still logs via the redirect).
-    'log_path'          => '/home/USER/logs/divergence.log',
+    // Logs go to <this folder>/logs/divergence.log, created automatically on the first
+    // run — everything a deployment writes stays inside the deployment folder.
+    // Uncomment to put them elsewhere, or set false to disable the file entirely
+    // (cron still captures output through its own redirect).
+    // 'log_path'       => '/absolute/path/to/divergence.log',
     'asset_universe'    => 100,   // top N by market cap
     'request_timeout'   => 10,    // seconds; shared hosts kill long runs
 
