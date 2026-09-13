@@ -29,10 +29,12 @@ declare(strict_types=1);
  * current version, so incrementing this and re-running rebuilds all derived rows from
  * payloads already on disk. That is the whole point of storing them verbatim (D3).
  *
- * 1 — first extractor. Written 13 Sep 2026 against documented response shapes; the
- *     field names are confirmed against real payloads the moment a key exists.
+ * 1 — first extractor, written against documented response shapes.
+ * 2 — confirmed against live payloads. Adds exchange_assets (the only surviving view of
+ *     reserves on this plan), the derivatives-to-spot ratio, and the per-asset
+ *     attention proxy the screener needs while every trending endpoint is 403.
  */
-const EXTRACTOR_VERSION = 1;
+const EXTRACTOR_VERSION = 2;
 
 /**
  * @return array{
@@ -94,6 +96,7 @@ function extractor_for(string $endpoint): ?callable
         'quotes_latest'            => 'extract_quotes_latest',
         'fear_and_greed'           => 'extract_fear_and_greed',
         'exchange_listings'        => 'extract_exchange_listings',
+        'exchange_assets'          => 'extract_exchange_assets',
         'content_latest'           => 'extract_content_latest',
         'community_trending_topic' => 'extract_trending_topic',
         'community_trending_token' => 'extract_trending_ranked',
@@ -174,6 +177,15 @@ function extract_global_metrics(mixed $data): array
     $push('derivatives_volume_24h', $quote['derivatives_volume_24h'] ?? $quote['derivative_volume_24h'] ?? null);
     $push('derivatives_24h_change', $quote['derivatives_24h_percentage_change'] ?? $data['derivatives_24h_percentage_change'] ?? null);
 
+    // Derivative volume against spot volume. On 13 Sep 2026 the first was 7.4x the
+    // second, which is the point: the ratio says how much of the day's activity happened
+    // in contracts rather than in the asset. It is the closest this API gets to a
+    // leverage reading, and it is the Money axis input D14 restored.
+    $derivatives = $quote['derivatives_volume_24h'] ?? $quote['derivative_volume_24h'] ?? null;
+    if (is_numeric($derivatives) && is_numeric($quote['total_volume_24h'] ?? null) && (float) $quote['total_volume_24h'] > 0) {
+        $push('derivatives_to_spot', (float) $derivatives / (float) $quote['total_volume_24h']);
+    }
+
     // Reported volume is what exchanges claim; total_volume_24h is CMC's adjusted
     // figure. On 13 Sep 2026 reported was 5.1x adjusted. The ratio is a measurement of
     // how much of the day's stated activity survives CMC's own filtering — which is a
@@ -252,6 +264,49 @@ function extract_exchange_listings(mixed $data): array
         ['metric' => 'exchange_top5_share',   'value' => $top5 / $total],
         ['metric' => 'exchange_volume_total', 'value' => $total],
         ['metric' => 'exchange_count',        'value' => (float) count($volumes)],
+    ]];
+}
+
+/**
+ * Exchange reserves — what sits on the venue rather than what moved across it.
+ *
+ * `/v1/exchange/assets` returns one row per wallet holding: a balance and the currency's
+ * USD price. The reserve is the sum of balance x price. Promoted to a polled endpoint on
+ * 13 Sep 2026 because `exchange_listings` is 403 on the Basic plan, which leaves this as
+ * the only reachable view of money at rest.
+ *
+ * The *level* is what is extracted here. The *movement* — the thing the Money axis
+ * actually wants — needs two samples and belongs to the scoring layer (rule 2 at the top
+ * of this file).
+ */
+function extract_exchange_assets(mixed $data): array
+{
+    if (!is_array($data)) {
+        return ['status' => 'skipped', 'note' => 'exchange assets data is not a list'];
+    }
+
+    $reserveUsd = 0.0;
+    $holdings = 0;
+    foreach ($data as $holding) {
+        if (!is_array($holding)) {
+            continue;
+        }
+        $balance = $holding['balance'] ?? null;
+        $price = $holding['currency']['price_usd'] ?? null;
+        if (!is_numeric($balance) || !is_numeric($price)) {
+            continue;
+        }
+        $reserveUsd += (float) $balance * (float) $price;
+        $holdings++;
+    }
+
+    if ($holdings === 0) {
+        return ['status' => 'skipped', 'note' => 'no holding in the exchange assets payload carried both a balance and a price'];
+    }
+
+    return ['market' => [
+        ['metric' => 'exchange_reserve_usd', 'value' => $reserveUsd],
+        ['metric' => 'exchange_holdings',    'value' => (float) $holdings],
     ]];
 }
 
@@ -492,6 +547,15 @@ function asset_money_metrics(array $entry): array
     $push('market_cap', $quote['market_cap'] ?? null);
     $push('volume_change_24h', $quote['volume_change_24h'] ?? null);
     $push('percent_change_24h', $quote['percent_change_24h'] ?? null);
+
+    // The per-asset Voice axis has no attention endpoint on this plan: trending,
+    // most-visited and community are all 403 (D14). Size of the day's move is the
+    // proxy that remains — an asset that moved 30% is being looked at, whichever
+    // direction it moved. It is weaker than a trending rank and the method page says
+    // so in those words. Absolute, because attention has no sign.
+    if (is_numeric($quote['percent_change_24h'] ?? null)) {
+        $push('abs_percent_change_24h', abs((float) $quote['percent_change_24h']));
+    }
     $push('price', $quote['price'] ?? null);
     $push('cmc_rank', $entry['cmc_rank'] ?? null);
 

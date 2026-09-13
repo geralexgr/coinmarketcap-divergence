@@ -11,15 +11,19 @@ satisfy first. `tests/run.php` is the whole harness; tests register cases with `
 
 ## What is worth testing
 
-1. **Normalisation** — fixed-range and percentile paths, boundary and out-of-range inputs. This is
-   the code most likely to be quietly wrong while looking plausible on a chart. **Not written yet**;
-   the scoring layer does not exist.
-2. **Extraction** — ✅ 21 cases in `extract_test.php`. The ones that earn their place are the
-   silent failures: an error body that is valid JSON and would otherwise parse as data, a division
-   by a zero market cap, an absent field being quietly stored as a zero. A zero plots as a reading;
-   a gap must plot as a gap.
-3. **Quadrant boundaries** — exactly at 50 on either axis.
-4. **Gap handling** — a series with a hole in it must come out with the hole intact, not smoothed.
+1. **Normalisation** — fixed-range and percentile paths, boundaries, out-of-range inputs, and the
+   basis switchover. The code most likely to be quietly wrong while looking plausible on a chart.
+   `scoring_test.php`, and most of its cases test edges rather than the happy path.
+2. **Extraction** — `extract_test.php`. The cases that earn their place are the silent failures: an
+   error body that is valid JSON and would otherwise parse as data, a division by a zero market cap,
+   an absent field being stored as a zero. A zero plots as a reading; a gap must plot as a gap.
+3. **A missing input must never be scored as zero.** Ten of seventeen endpoints are 403 on this plan,
+   so this path runs on every sample the product will ever record.
+4. **Quadrant boundaries** — exactly 50 on either axis, and consistently on one side of it.
+5. **Nothing may read the future.** A percentile or a value "as of" a moment that included later
+   samples would make a recomputed history differ from the one that would have been computed live.
+6. **No sentence in the readout points at the future.** The product's one hard rule, enforced by
+   grepping the generated copy rather than by remembering.
 
 ## Fixtures
 
@@ -27,9 +31,11 @@ satisfy first. `tests/run.php` is the whole harness; tests register cases with `
 extractor could be built before a key existed. They are the right shape; they are **not** proof the
 real one matches.
 
-`tests/fixtures/live/` is written by `bin/verify-endpoints.php --save-fixtures` on day 1 — free at
-that moment and annoying to obtain later. Re-point the extraction tests at it as the first thing
-after the key arrives: every failure is a place where the documentation and the API disagree.
+`tests/fixtures/live/` is written by `bin/verify-endpoints.php --save-fixtures` — free at that
+moment and annoying to obtain later. `live_test.php` runs the extractor against those payloads and
+skips cleanly when they are absent, which is why they are gitignored. It has already caught one real
+bug: the historical fear-and-greed list arrives newest-first and the extractor had been taking the
+oldest point.
 
 Keep both. A synthetic fixture is still the cheapest way to test an edge case the live payload
 happens not to contain.

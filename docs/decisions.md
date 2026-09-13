@@ -98,7 +98,7 @@ it costs little once the scores exist and nothing is lost by deferring it.
 **Date:** before day 1 · **Status:** settled, revisit after batching is known
 
 **Why:** 30 requests/minute and a credit budget that should be observable rather than guessed. Widen
-only if batching turns out to be generous — see `open-questions.md` item 6.
+only if batching turns out to be generous. It is: 100 ids in one call, confirmed against real payloads — see `limits.md`.
 
 ---
 
@@ -266,15 +266,117 @@ back the 5-minute market sample. It is the first thing to build if credits get t
 
 ---
 
-## Pending decisions
+## D16 — The Voice axis ships on what is reachable, with the resolution stated
 
-These are waiting on `open-questions.md` and must be recorded here once settled:
+**Date:** 13 September 2026 · **Status:** settled · **Supersedes the pending item left by D14**
 
-- Money axis inputs, final — D10 as amended by D14: turnover, plus market-wide derivatives volume.
-  Weights still wait on real distributions
-- **Voice axis, whether it survives as an axis at all** — D14 left it with one daily input. Either
-  the plan is upgraded, or the axis is rebuilt on what is reachable and the method page states the
-  daily resolution plainly. This is the open product decision, and it is blocking
-- Market-wide cadence — settled in D15 at 10 minutes, on budget grounds rather than the cron floor
-  (question 4 still matters for whether the host honours it)
-- Percentile window length (question 7)
+D14 left one product decision open: with six of the seven Voice endpoints answering 403, either the
+plan gets upgraded or the axis is rebuilt on what is reachable. **Settled: rebuilt, and the
+limitation is published rather than worked around.**
+
+Voice is the fear and greed index alone, weight 1.00 after renormalisation, updated **once a day**.
+The other two designed inputs stay declared in `scoring/inputs.php` at their intended weights,
+marked unavailable, and shown that way on the method page.
+
+**Why not upgrade the plan:** it makes the product depend on a purchase to be demonstrable, and a
+judge running it against their own Basic key would see a broken tool. Shipping on the free tier and
+being explicit about what that costs is the more honest artefact, and it is the one that still works
+when somebody else clones the repo.
+
+**Why not drop the axis and ship one number:** the quadrant *is* the product. A daily-resolution
+axis still separates the four readings correctly; it just steps rather than glides. The app says so
+directly on the chart, so the flat stretches read as a daily input rather than as a quiet market.
+
+**What it costs, stated plainly:** Voice moves once a day while Money moves every ten minutes. The
+trail is therefore mostly horizontal with daily vertical steps. That is a real weakness of the
+deployment and it is written on the market screen, not only in this file.
+
+**Revisit if:** the plan changes. Nothing in the code needs to — `endpoint_access_results()` gates
+availability and the inputs are already declared.
+
+---
+
+## D17 — Per-asset scores are ranked against the universe, not against their own past
+
+**Date:** 13 September 2026 · **Status:** settled
+
+Market-wide scores rank each input against its own history (D7). Applying that per asset would mean
+no screener until a week of history existed per asset, and a percentile per asset per metric per
+sample is also the most expensive query in the product.
+
+**Settled: per-asset inputs are ranked cross-sectionally — against the rest of the tracked universe
+at the same instant.** "Turnover in the 92nd percentile of the top 100 right now." Recorded on the
+row as `basis = 'cross_section'`, a third value alongside `fixed` and `percentile`.
+
+**Why it is better rather than merely cheaper:** it is the question a screener is actually asked.
+Sorting assets by how unusual each is *against the others* is what makes the table a screener;
+sorting by how unusual each is against its own last week is a different tool. It also works from the
+first sample, so the screener is populated on day one.
+
+**What it costs:** market-wide and per-asset scores are not comparable and must never share a chart.
+The method page says this and the two views are kept separate in the UI.
+
+---
+
+## D18 — The per-asset Voice proxy is price-derived, and labelled as the weakest number in the product
+
+**Date:** 13 September 2026 · **Status:** settled, uncomfortably
+
+There is no per-asset attention data on the Basic plan: trending, most-visited and community are the
+endpoints that carry it and all three are 403. The per-asset Voice axis therefore has nothing clean
+to measure.
+
+**Settled: `abs_percent_change_24h` — the size of the day's move, direction discarded — as a proxy,
+on the reasoning that an asset that moved 30% is being looked at whichever way it moved.**
+
+**Why this is uncomfortable:** it is derived from price, so it is partly contaminated by the Money
+axis, and the whole point of the product is that the two axes measure different things. A screener
+built on it will correlate the axes more than the design intends.
+
+**Why it ships anyway:** the alternative is a screener with one axis, which is not a screener. The
+mitigation is disclosure rather than cleverness — the method page names it as the weakest input in
+the product, and `trend_rank` stays declared at weight 0.60 so the moment attention data is
+reachable the proxy drops to a minority input on its own.
+
+**Revisit if:** any trending endpoint becomes callable. Nothing needs rewriting; the weights already
+describe the intended axis.
+
+---
+
+## D19 — The extractor streams payloads instead of fetching a batch
+
+**Date:** 13 September 2026 · **Status:** settled, after it broke
+
+`bin/extract.php` selected `raw_samples.payload` alongside the id and fetched the batch with
+`fetchAll()`. At the documented cron limit of 2000 that is up to 2000 LONGTEXT bodies in memory at
+once — a listings payload is around 150KB, so roughly 300MB — and it died on PHP's default 128MB
+limit on the first full run against real volumes.
+
+**Settled: select the ids only, then load each payload individually inside the loop and release it.**
+Peak memory becomes a property of the largest single payload rather than of `--limit`, so the cron
+entry is safe at any batch size on a shared host.
+
+**Why it matters more than it looks:** the failure mode was a fatal error partway through a run, on
+the component whose whole job is to be re-runnable. It would have surfaced on the host as an
+extractor that silently stopped keeping up while the poller kept recording — visible only as
+extraction lag in `bin/health.php`, days later.
+
+**The general lesson, applied elsewhere in the codebase:** anything that reads `raw_samples` reads
+one payload at a time. The scoring layer loads `market_metric`, which is small typed rows, not
+payloads.
+
+---
+
+## Still undecided
+
+Nothing blocking. These are refinements that need data the deployment has not yet produced:
+
+- **Reference ranges.** The fixed-basis floors and ceilings in `scoring/inputs.php` are set from the
+  first days of measurement and from the live payloads captured on 13 September 2026. They should be
+  re-derived from a fortnight of real distributions and `METHOD_VERSION` bumped when they are.
+- **Percentile window length.** 30 days is declared; the deployment will never have that much during
+  the hackathon, so in practice the window is "all of recorded history". Worth revisiting only if
+  this runs past a month.
+- **Per-endpoint cadence.** Cadence is per scope, so the once-a-day fear and greed index is fetched
+  144 times a day for 143 identical values (D15). Per-endpoint intervals would roughly halve the
+  credit bill and buy back the 5-minute market sample. The first thing to build if credits get tight.

@@ -1,0 +1,59 @@
+# Divergence — webroot rules.
+#
+# public/ is the only directory served over HTTP. The config file, the poller, the
+# scoring layer and every raw payload sit above it and are unreachable by request.
+#
+# Apache on cPanel is the target. A host running nginx needs the equivalent in the
+# server block; the deploy runbook says so.
+
+# ---------------------------------------------------------------------------
+# Only the entry points are reachable.
+# ---------------------------------------------------------------------------
+#
+# bootstrap.php lives in this directory because every page includes it, but it is not
+# an entry point: requested directly it would run with no page around it. Blocking it
+# by name is cheaper and clearer than moving it and rewriting eight include paths.
+<FilesMatch "^bootstrap\.php$">
+    Require all denied
+</FilesMatch>
+
+# Nothing here should ever be fetched, and a stray copy left by an editor or a merge
+# is exactly the kind of thing that leaks a key.
+<FilesMatch "\.(sql|md|log|ini|sh|bak|orig|rej|swp|dist|example)$|^\.|~$">
+    Require all denied
+</FilesMatch>
+
+# ---------------------------------------------------------------------------
+# No directory listings. The assets directory would otherwise be browsable.
+# ---------------------------------------------------------------------------
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Tidy URLs: /market, /assets, /method. The .php forms keep working, so a link
+    # written either way resolves.
+    RewriteRule ^market/?$   index.php  [L]
+    RewriteRule ^assets/?$   assets.php [L]
+    RewriteRule ^method/?$   method.php [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    # The app loads no third-party script, font, or stylesheet — the chart is hand-drawn
+    # SVG rather than a charting library — so the policy can be this tight.
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "DENY"
+</IfModule>
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+# The database is read-only from here and there is no write path in the app at all,
+# but a POST to a page that only ever reads is still a request nobody meant to make.
+<LimitExcept GET HEAD>
+    Require all denied
+</LimitExcept>

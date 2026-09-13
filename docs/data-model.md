@@ -1,11 +1,10 @@
 # Data model
 
-All of these tables are **built** — `sql/001_init.sql` for the recording core and
-`sql/002_derived.sql` for everything derived from it. The column comments in those files are
-authoritative where this page disagrees.
+`sql/001_init.sql` is the recording core; `sql/002_derived.sql` is everything derived from it. The
+column comments in those files are authoritative where this page disagrees.
 
-`scores` is migrated but not yet written to: the scoring layer is the next thing to build. Every
-other table is populated, by `poller/run.php` and `bin/extract.php` respectively.
+Written by `poller/run.php` (raw), `bin/extract.php` (typed) and `bin/score.php` (scores). Nothing
+else writes: the web app and the MCP server never write at all.
 
 ## Principles
 
@@ -67,7 +66,8 @@ What `lib/extract.php` writes today:
 | `market_turnover` | `global_metrics` — total volume ÷ total market cap | money |
 | `total_market_cap`, `total_volume_24h`, `altcoin_volume_24h` | `global_metrics` | money |
 | `stablecoin_volume_24h`, `stablecoin_volume_share` | `global_metrics` | money |
-| `derivatives_volume_24h` | `global_metrics`, **if the field exists** — see D10 | money |
+| `derivatives_volume_24h`, `derivatives_to_spot` | `global_metrics` — derivative volume, and its ratio to spot | money |
+| `exchange_reserve_usd`, `exchange_holdings` | `exchange_assets` — reserve *level*; the movement is derived in scoring | money |
 | `btc_dominance`, `eth_dominance`, `active_cryptocurrencies` | `global_metrics` | context |
 | `exchange_hhi`, `exchange_top5_share`, `exchange_volume_total`, `exchange_count` | `exchange_listings` | money |
 | `fear_greed` | `fear_and_greed` | voice |
@@ -78,15 +78,16 @@ What `lib/extract.php` writes today:
 
 Three things are deliberately **not** here, because each needs two samples and extraction sees
 exactly one: trending churn, exchange reserve *movement*, and every percentile. They belong to the
-scoring layer, which can see the series. Keeping extraction single-payload is what makes a rebuild
-order-independent.
+scoring layer, which can see the series — `derive_cross_sample_inputs()` in `scoring/recompute.php`.
+Keeping extraction single-payload is what makes a rebuild order-independent.
 
 ### `asset_metric` — extracted, per asset
 As above plus `cmc_id INT` and `symbol VARCHAR(32)`, unique on `(raw_sample_id, cmc_id, metric)`,
 index on `(cmc_id, metric, sampled_at)`. This is the big table: ~600k rows over three weeks.
 
 Metrics: `turnover` (the per-asset Money input), `volume_24h`, `market_cap`, `volume_change_24h`,
-`percent_change_24h`, `price`, `cmc_rank`, and `trend_rank` from each trending list.
+`percent_change_24h`, `abs_percent_change_24h` (the Voice proxy — see D18), `price`, `cmc_rank`, and
+`trend_rank` from each trending list when the plan permits one.
 
 The symbol is stored alongside the id because the screener orders by metric and prints a symbol,
 and that should not need a join per row. The **id** is the identity; symbols get reused.
@@ -114,11 +115,27 @@ usually CoinMarketCap changing a response shape and should be read the same day.
 | `money` | DECIMAL(6,2) | 0–100 |
 | `divergence` | DECIMAL(7,2) | signed |
 | `quadrant` | ENUM | the four readings |
-| `basis` | ENUM('fixed','percentile') | which normalisation produced this row |
-| `method_version` | SMALLINT | bumped whenever weights change |
+| `basis` | ENUM('fixed','percentile','cross_section') | which normalisation produced this row |
+| `method_version` | SMALLINT | bumped whenever weights, ranges or the input list change |
+| `voice_inputs`, `money_inputs` | TINYINT | how many declared inputs actually had data |
+| `inputs_possible` | TINYINT | how many were declared across both axes |
 
 `basis` and `method_version` exist so the method page can state honestly which rows were computed
-which way, and so a weighting change is visible in the data rather than rewriting the past silently.
+which way, and so a weighting change adds a parallel series rather than rewriting the past silently.
+Scores are keyed on `(scope, cmc_id, sampled_at, method_version)`, so `bin/score.php --rebuild`
+updates in place instead of doubling the trail.
+
+The three basis values are three different measurements:
+
+- `fixed` — market-wide, first seven days, min-max against hand-set reference ranges
+- `percentile` — market-wide thereafter, rank within a trailing window of its own history
+- `cross_section` — **per asset**, ranked against the rest of the universe at the same instant
+  rather than against its own past (D17). This is why the screener works from the first sample, and
+  why per-asset and market-wide scores are never plotted on one chart.
+
+`voice_inputs` and `money_inputs` are the honesty columns. On the Basic plan the Voice axis has one
+input of three declared, and a score built from one input is a weaker claim than one built from
+three. Storing the count means the app can print it rather than leaving a reader to assume.
 
 ### `asset_universe` — which assets are tracked
 `cmc_id`, `symbol`, `name`, `rank_last`, `first_seen`, `last_seen`. Membership changes over time
@@ -129,9 +146,27 @@ reports, it is an absence, so it is recorded as `last_seen` ceasing to move. The
 `LEAST`/`GREATEST` so that a rebuild, which may process samples in any order, cannot move an
 asset's arrival forward in time.
 
-## Open shape questions
+## How a number gets from the API to the screen
 
-- Long format for metrics assumes a handful of metrics. If it turns out to be dozens, revisit.
-- Whether `scores` stores every sample or only recomputes on read. Storing is chosen for now
-  because the web app must be fast and the table is small.
-- Retention: nothing is deleted during the hackathon. Three weeks of data fits.
+```
+CoinMarketCap  →  raw_samples.payload            verbatim, never updated, never deleted
+               →  market_metric / asset_metric   one row per metric per sample
+               →  scores                         two axes, the gap, the quadrant
+               →  public/ and mcp/               read-only, through lib/queries.php
+```
+
+Each arrow is re-runnable from the one before it. Bump `EXTRACTOR_VERSION` and the second re-derives;
+bump `METHOD_VERSION` and the third does. Only the first is irreversible, which is why it is the one
+that ships before everything else.
+
+## Shape notes
+
+- Long format for metrics assumes a handful per sample. It is currently ~24 market metrics and ~7
+  per asset; if it becomes dozens, revisit.
+- `scores` is stored rather than computed on read, because the web app must open fast and the table
+  is small — one row per market sample, one per asset per listings sample.
+- Reads never join to `raw_samples`. `sampled_at` and `symbol` are denormalised onto the derived
+  tables precisely so a chart query never touches a LONGTEXT column.
+- Anything that reads payloads reads **one at a time** (D19). A batch of LONGTEXT bodies exceeds the
+  memory limit on a shared host.
+- Retention: nothing is deleted. Three weeks of data fits comfortably.

@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS extraction_log (
 -- rows were produced which way: the first seven days are normalised against fixed
 -- reference ranges and later rows against percentile rank, and hiding that
 -- switchover inside the code would make the trail dishonest.
+--
+-- voice_inputs and money_inputs record how much of the declared method a row actually
+-- saw. A Voice score built from one of three inputs is a weaker claim than one built from
+-- three, and on the Basic plan it is always one — so the number is stored on the row and
+-- printed beside the score rather than left for a reader to assume.
 
 CREATE TABLE IF NOT EXISTS scores (
     id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -120,10 +125,13 @@ CREATE TABLE IF NOT EXISTS scores (
     sampled_at     DATETIME(3)     NOT NULL,
     voice          DECIMAL(6,2)    NOT NULL COMMENT '0-100',
     money          DECIMAL(6,2)    NOT NULL COMMENT '0-100',
-    divergence     DECIMAL(7,2)    NOT NULL COMMENT 'signed: voice - money',
+    divergence     DECIMAL(7,2)    NOT NULL COMMENT 'signed: money - voice, matching docs/method.md',
     quadrant       ENUM('chatter_without_conviction','loud_and_leveraged','apathy','quiet_but_leveraged') NOT NULL,
-    basis          ENUM('fixed','percentile') NOT NULL COMMENT 'which normalisation produced this row',
+    basis          ENUM('fixed','percentile','cross_section') NOT NULL COMMENT 'which normalisation produced this row. cross_section is the per-asset one: ranked against the rest of the universe at the same instant rather than against its own past',
     method_version SMALLINT UNSIGNED NOT NULL,
+    voice_inputs    TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'how many declared Voice inputs actually had data',
+    money_inputs    TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    inputs_possible TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'how many were declared. Ten of seventeen endpoints are 403 on this plan, so used < possible is the normal case and the app prints the ratio rather than hiding it',
     computed_at    DATETIME(3)     NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_scope_asset_time_version (scope, cmc_id, sampled_at, method_version),

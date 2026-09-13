@@ -81,7 +81,18 @@ if ($endpoint !== null) {
     $params[':endpoint'] = $endpoint;
 }
 
-$sql = 'SELECT r.id, r.endpoint, r.scope, r.fetched_at, r.http_status, r.payload
+// Ids first, payloads one at a time.
+//
+// The obvious version of this selects the payload column alongside the id and fetches
+// the batch in one go. That loads up to --limit LONGTEXT bodies into memory at once: a
+// listings payload is around 150KB, so the documented cron limit of 2000 needs roughly
+// 300MB and dies on a shared host with the usual 128MB cap. Measured, not theorised —
+// it exhausted the default limit on the first full run.
+//
+// Selecting only the ids keeps that list to a few tens of kilobytes whatever --limit is,
+// and each payload is then read, used and released one at a time. Peak memory becomes a
+// property of the largest single payload rather than of the batch size.
+$sql = 'SELECT r.id
           FROM raw_samples r
           LEFT JOIN extraction_log e
                  ON e.raw_sample_id = r.id AND e.extractor_version = :version
@@ -94,19 +105,23 @@ foreach ($params as $name => $value) {
     $stmt->bindValue($name, $value, $name === ':limit' || $name === ':version' ? PDO::PARAM_INT : PDO::PARAM_STR);
 }
 $stmt->execute();
-$samples = $stmt->fetchAll();
+$sampleIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-if ($samples === []) {
+if ($sampleIds === []) {
     $say(sprintf('Nothing to extract at version %d. Everything stored has been read.', EXTRACTOR_VERSION));
     exit(0);
 }
 
 $say(sprintf(
     "Extracting %d sample(s) at version %d%s\n",
-    count($samples),
+    count($sampleIds),
     EXTRACTOR_VERSION,
     $dryRun ? ' (dry run, nothing will be written)' : ''
 ));
+
+$loadSample = $pdo->prepare(
+    'SELECT id, endpoint, scope, fetched_at, http_status, payload FROM raw_samples WHERE id = ?'
+);
 
 // ---------------------------------------------------------------------------
 // Read them.
@@ -115,7 +130,13 @@ $counts = ['ok' => 0, 'skipped' => 0, 'error' => 0];
 $rowsTotal = 0;
 $skipReasons = [];
 
-foreach ($samples as $sample) {
+foreach ($sampleIds as $sampleId) {
+    $loadSample->execute([$sampleId]);
+    $sample = $loadSample->fetch();
+    if ($sample === false) {
+        continue;
+    }
+
     $id = (int) $sample['id'];
     $endpointName = (string) $sample['endpoint'];
     $sampledAt = (string) $sample['fetched_at'];
@@ -174,6 +195,10 @@ foreach ($samples as $sample) {
             $result['note'] ?? ''
         ));
     }
+
+    // Explicit, because the loop body holds the only reference and the next iteration
+    // would otherwise keep this payload alive while loading the following one.
+    unset($sample, $result);
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +221,7 @@ if ($skipReasons !== []) {
     }
 }
 
-if (count($samples) === $limit) {
+if (count($sampleIds) === $limit) {
     $say(sprintf("\nHit the --limit of %d. Run again for the rest.", $limit));
 }
 

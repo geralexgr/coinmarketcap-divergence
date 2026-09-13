@@ -3,7 +3,7 @@
 ![Data flow](mockups/architecture-flow.png)
 
 ```
-cPanel cron (5 min)                cPanel cron (15 min)
+cPanel cron (10 min)               cPanel cron (30 min)
       │                                  │
       ▼                                  ▼
   poller/run.php --market          poller/run.php --assets
@@ -23,62 +23,76 @@ cPanel cron (5 min)                cPanel cron (15 min)
    │ scores        Voice/Money/Div      │  derived, recomputable
    └─────────────────┬──────────────────┘
                      ▼
-              scoring/ (pure functions over stored rows)
+        bin/extract.php  (cron, no credits, no network)
+       bin/score.php    (cron, no credits, no network)
                      │
-      ┌──────────────┼───────────────┐
-      ▼              ▼               ▼
-  public/         mcp/            alerts
-  web app      MCP server      (transitions)
+      ┌──────────────┴───────────────┐
+      ▼                              ▼
+  public/                         mcp/server.php
+  web app + JSON api/             MCP over stdio
 ```
+
+Four cron entries, three separable jobs. **Fetch** costs credits and cannot be caught up on later.
+**Extract** and **score** cost nothing and are re-runnable over the whole of history, which is why
+they are separate processes on offset minutes: a slow or failing derivation must never be able to
+delay a fetch.
 
 ## Components
 
 ### `poller/`
 The only component that writes source data. Runs from cron via PHP CLI, never over HTTP.
 
-Responsibilities, in order:
-1. Fetch each configured endpoint.
+Responsibilities, and deliberately nothing else:
+1. Fetch each endpoint the plan permits — `endpoints_to_poll()` refuses to schedule a 403.
 2. Write the raw response body verbatim to `raw_samples`, with the **actual** fetch timestamp.
 3. Write one `fetch_log` row per attempt — endpoint, HTTP status, credits consumed, error text.
-4. Extract typed fields into `market_metric` / `asset_metric`.
 
-Step 2 happens before step 4 and is independent of it. If extraction throws, the raw payload is
-already banked and can be re-extracted later.
+No parsing, no scoring, no normalisation. Those read from what this wrote and can be rewritten on
+day eighteen; this cannot.
 
 Each run is short and stateless. Shared hosts kill long-running processes, so there is no queue, no
 daemon, and no in-memory state between runs.
 
 ### `lib/`
-`http.php` (timeouts, retry with backoff, credit header parsing), `db.php` (PDO, prepared
-statements only), `config.php` loader reading from outside the webroot.
+`http.php` (timeouts, retry with backoff, credit parsing, `cmc_outcome()`), `db.php` (PDO, prepared
+statements only), `config.php` loading from outside the webroot, `endpoints.php` (the one catalogue
+the prober, verifier and poller all share), `extract.php` (pure, single-payload), and `queries.php`
+— every read the surfaces make.
 
 ### `scoring/`
-Pure functions: rows in, scores out. No fetching, no side effects beyond writing the `scores`
-table. This is what makes recomputation over all history cheap and what makes the normalisation
-testable with fixtures.
+`inputs.php` declares the method as data; `normalise.php` and `score.php` are pure functions over
+it; `recompute.php` is the only part that touches the database. Nothing here fetches. This is what
+makes rescoring the whole of history a one-line operation and the normalisation testable against
+fixtures.
 
 ### `public/`
-The only web-served directory. Read-only against the database. No write endpoint exists anywhere in
-the web app — the only writer is cron.
+The only web-served directory. Read-only against the database — there is no write path anywhere in
+the web app. Three pages and four JSON endpoints, all reading through `lib/queries.php`.
 
 ### `mcp/`
-Thin wrapper over the same queries `public/` uses. Deliberately last: it adds nothing the scores do
-not already contain, and it cannot exist before them. See `mcp-tools.md`.
+A JSON-RPC server over stdio, wrapping the same `lib/queries.php` functions the web app reads
+through. That shared file is what makes the two surfaces answer identically rather than
+approximately. No tool takes a write action. See `mcp-tools.md`.
 
 ## Cadence
 
-| What | Interval | Rows/day | Notes |
+| What | Interval | Credits/day | Notes |
 |---|---|---|---|
-| Market-wide | 5 min | ~288 | fear and greed, trending, community posts, global metrics, exchange volume |
-| Per asset | 15 min | ~9,600 | top ~100 assets, batched |
+| Market-wide | 10 min | 576 | global metrics, listings, fear and greed, exchange assets |
+| Per asset | 30 min | 48 | top ~100 assets in one batched call |
+| Extract | 20 min, offset | 0 | reads stored payloads only |
+| Score | 30 min, offset | 0 | reads typed rows only |
 
-Roughly 6k market rows and 600k asset rows over three weeks — about 100 MB with indexes. Comfortable
-on shared hosting.
+About 624 credits a day against a 15,000/month budget. Roughly 2,500 market rows and 250,000 asset
+rows over three weeks — 100–150 MB with indexes.
+
+**The cadence is set by the budget, not by preference** (D15). The 5/15-minute cadence this repo was
+originally designed around costs ~1,250 a day and exhausts the plan in twelve days.
 
 ## Rate and credit budget
 
-- **30 requests/minute.** A per-asset run must batch: one call covering many assets wherever the
-  endpoint supports a comma-separated id list, and a hard cap of 100 assets in the universe.
+- **50 requests/minute**, measured. A per-asset run batches: one call covering 100 assets via the
+  comma-separated id list, confirmed against real payloads.
 - **15,000 credits/month** — the Basic plan, measured 13 Sep 2026 (D14), not the 300,000 originally
   assumed. Credits per call come back in the response; they are logged rather
   than estimated, so usage is observable.
@@ -90,8 +104,13 @@ Nothing about a failure is silent, and nothing about a failure is fatal to the n
 
 - A failed fetch writes a `fetch_log` row and the run continues to the next endpoint.
 - A gap in `raw_samples` is a real gap and is shown as one. Charts do not interpolate across it.
-- The recording-health script (`bin/`) reports rows/hour, longest gap, and failure rate, so a dead
-  poller is noticed the same day rather than at submission time.
+- An input the scoring layer cannot find is **dropped, not zeroed**, and the score records how many
+  inputs it saw. A sample with no Voice input at all writes no score row, so the trail shows a gap
+  rather than a point that was never measured.
+- The recording-health script (`bin/health.php`) reports rows/hour, longest gap, extraction lag and
+  failure rate, so a dead poller is noticed the same day rather than at submission time.
+- Every web page has an honest empty state naming what is missing. An empty chart would read as a
+  measurement of a market where nothing is happening.
 
 ## Time
 

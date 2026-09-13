@@ -2,20 +2,10 @@
 
 **What the crypto market is *saying*, plotted against what it has actually *committed money to*.**
 
-CoinMarketCap publishes both halves of this — community and social activity on one set of pages,
+CoinMarketCap publishes both halves of this — sentiment and community activity on one set of pages,
 volume and exchange flow on another — and never puts them on the same axis. That gap is the product.
 
-Built for the CoinMarketCap API Hackathon (submissions close early October 2026).
-
-> **Status: recording and extraction layers built and verified against the live API, not yet
-> deployed.** The schema, the poller, the extractor, the endpoint verifier and the health check
-> exist, are tested end-to-end against a real MySQL, and the extractor is tested against real
-> CoinMarketCap payloads. Nothing is recording yet, because that needs the host.
->
-> **The plan is Basic: 15,000 credits/month, and ten of the seventeen endpoints this design wanted
-> answer 403** — including every social and trending endpoint the Voice axis was built on. See
-> [D14](docs/decisions.md) and [docs/endpoint-access.md](docs/endpoint-access.md). Start at
-> [TOMORROW.md](TOMORROW.md).
+Built for the CoinMarketCap API Hackathon.
 
 ---
 
@@ -23,7 +13,10 @@ Built for the CoinMarketCap API Hackathon (submissions close early October 2026)
 
 ![Divergence market view](docs/mockups/ui-market-view.png)
 
-*Mockup, not live data. Source: [`docs/mockups/dashboard-mockup.html`](docs/mockups/dashboard-mockup.html).*
+Voice on the vertical axis, Money on the horizontal, each 0–100. The market sits at a point — and
+because the recorder has been running, that point sits at the end of a **trail** showing the path it
+took to get there. That trail is the part of this that cannot be reconstructed from an API call, by
+anyone, at any later date.
 
 ---
 
@@ -31,157 +24,121 @@ Built for the CoinMarketCap API Hackathon (submissions close early October 2026)
 
 Two scores, both normalised 0–100, both sampled continuously.
 
-| Score | Question it answers | Inputs |
+| Score | Question it answers | Inputs actually in use |
 |---|---|---|
-| **Voice** | How much is the market talking? | social / community volume, fear and greed, trending |
-| **Money** | How much money is actually moving? | turnover (volume ÷ market cap), exchange concentration, reserve movement |
-| **Divergence** | How far apart are they? | the signed gap between the two |
+| **Voice** | How much is the market talking? | fear and greed index |
+| **Money** | How much money is actually moving? | turnover, derivative share of activity, stablecoin share, exchange reserve movement |
+| **Divergence** | How far apart are they? | `money − voice`, signed |
 
-Plotted as a quadrant — Voice on one axis, Money on the other. The market sits at a point, and
-because we record continuously, that point sits at the end of a **trail** showing the path it took
-to get there.
+Four readings, from where the point sits:
 
-| | Low Money | High Money |
+| | Money &lt; 50 | Money ≥ 50 |
 |---|---|---|
-| **High Voice** | Chatter without conviction | Loud and leveraged |
-| **Low Voice** | Apathy | Quiet, but leveraged |
+| **Voice ≥ 50** | Chatter without conviction | Loud and leveraged |
+| **Voice &lt; 50** | Apathy | Quiet, but leveraged |
 
 The same two scores are computed **per asset**, which turns the tool into a screener with axes that
-exist nowhere else: sort the market by how much an asset is talked about versus how much money sits
-behind it.
+exist nowhere on CoinMarketCap's own site: sort the market by how much an asset is being looked at
+against how much money is moving through it.
 
 ---
 
 ## Read this first: what this is not
 
-This tool gives **no financial advice and no recommendations**. Ever. Not "consider reducing
-exposure", not "this looks overheated", not a buy/sell/hold signal, not a risk rating that implies
-action.
+This tool gives **no financial advice and no recommendations**. Not "consider reducing exposure",
+not "this looks overheated", not a buy/sell/hold signal, not a risk rating that implies action.
 
 Every output is a **measurement of a condition that exists right now, or existed at a recorded past
-moment**. If a sentence points at the future, it does not belong in this product.
+moment**. A quadrant is a label for where a point sits; it is not a rating. If a sentence points at
+the future, it is a bug — there is a test that greps the readout copy for exactly that.
 
-Two reasons this is a hard constraint and not a disclaimer:
+Two reasons this is a hard constraint rather than a disclaimer:
 
-1. Judging weights "does it work" at 30%. A measurement can be verified by a judge against
-   CoinMarketCap in thirty seconds. A prediction cannot be verified at all.
+1. A measurement can be verified against CoinMarketCap in thirty seconds. A prediction cannot be
+   verified at all.
 2. Recommendations drag in liability and put the entry in the same bucket as most of the field.
 
 ---
 
-## Why the recorder is the whole product
+## Read this second: what the API plan costs the method
 
-CoinMarketCap's API is almost entirely **snapshot data**. Price history can be fetched
-retroactively. **Positioning and sentiment history cannot** — there is no historical endpoint for
-social volume, turnover or exchange flow at usable granularity, and none at all for some of it.
+The key behind this deployment is on CoinMarketCap's **Basic** plan. Measured against the live API
+rather than read off a pricing page: **7 of the 17 endpoints this design was built on are callable,
+and 10 answer HTTP 403.**
 
-Which means:
+The Voice axis takes the damage. Trending, most-visited, community and content are all forbidden,
+leaving the fear and greed index — one input, updated **once a day**. So Voice steps daily while
+Money moves every ten minutes.
 
-- Whoever starts recording on day one owns a dataset nobody starting later can reconstruct.
-- The trail on the plot, every "up 26 this week" figure, and the whole lead/lag analysis depend
-  entirely on having recorded.
-- **The poller ships before the frontend.** Not a later phase. A day of delay is a day of history
-  that cannot be recovered.
+This is stated on the market screen, on the method page, and here, because a tool that showed a flat
+Voice line without explaining it would be misrepresenting the market rather than the plan. The
+forbidden inputs stay declared in the method at their intended weights and light up automatically if
+the plan changes — see [D16](docs/decisions.md).
 
-If you are picking this up and the poller is not running: build the crudest version that works —
-hit the endpoints, dump raw JSON with a timestamp into one table, deploy the cron. No schema
-design, no scoring, no normalisation. Get it recording, then build everything else.
+**And there are no derivatives endpoints at all.** The Money axis was designed around funding rates,
+open interest and liquidations. 38 candidate paths probed across `/v1/`–`/v4/`; every one absent —
+not 403, absent, so no plan upgrade produces them. What replaced them measures money *moving* and
+money *at rest*, not money *committed and leveraged*. See [D10](docs/decisions.md) and
+[docs/limits.md](docs/limits.md).
 
 ---
 
-## Architecture
-
-![Data flow](docs/mockups/architecture-flow.png)
+## How it works
 
 ```
-cPanel cron (every 5 min)
-      │
-      ▼
-  poller.php  ──────►  CoinMarketCap API
-      │                (voice endpoints + money endpoints)
-      ▼
-   MySQL
-   ├── raw response JSON + timestamp    ← source of truth
-   ├── extracted fields                 ← derived, recomputable
-   └── fetch log                        ← every attempt, success or failure
-      │
-      ▼
-  scoring layer  ──►  Voice / Money / Divergence, market-wide and per asset
-      │
-      ├──► web app (read-only)
-      ├──► MCP server (thin wrapper over the same queries)
-      └──► alerts
+cPanel cron ──► poller/run.php ──► CoinMarketCap API
+                     │
+                     ▼
+                  MySQL
+   ├── raw_samples      verbatim JSON + real fetch time   ← source of truth
+   ├── fetch_log        every attempt, success or failure
+   ├── market_metric    extracted fields, recomputable
+   ├── asset_metric     the same per asset
+   └── scores           Voice / Money / Divergence
+                     │
+       ┌─────────────┼──────────────┐
+       ▼             ▼              ▼
+   public/        mcp/         api/*.php
+   web app     MCP server      JSON, read-only
 ```
+
+Three cron entries, three separable jobs: **fetch** (costs credits, cannot be caught up on later),
+**extract** (no credits, no network, re-runnable over all history), **score** (no credits, rebuilt
+from scratch whenever a weight changes).
 
 Detail: [`docs/architecture.md`](docs/architecture.md) · Tables: [`docs/data-model.md`](docs/data-model.md)
 
-**Why a web app and not only an agent.** A judge can open a URL and check the numbers against
-CoinMarketCap themselves. That is what makes the largest scoring criterion easy to award.
+### Why the recorder is the whole product
 
-**Why the MCP layer comes last.** Once the scores sit in a database, exposing them as agent tools
-is a thin wrapper over queries already written. Same codebase, second track.
+CoinMarketCap's API is almost entirely **snapshot data**. Price history can be fetched
+retroactively; **positioning and sentiment history cannot**. There is no historical endpoint for
+turnover, exchange flow or social volume at usable granularity, and none at all for some of it.
 
----
+So the trail on the plot, every "up 26 this week" figure, and every quadrant transition exist only
+because something was recording at the time. Whoever starts recording on day one owns a dataset
+nobody starting later can reconstruct.
 
-## Stack
+### Why raw payloads are stored verbatim
 
-Deliberately boring and already paid for:
-
-- **PHP** on cPanel shared hosting
-- **MySQL**
-- **Real cron** via cPanel, invoked through PHP CLI — not a `wget` to a URL, which inherits HTTP
-  timeouts and creates a public endpoint that then has to be protected
-- Vanilla JS + one charting library on the frontend
-- No framework unless it earns its place
-
-Not Vercel: the Hobby plan rejects any cron schedule resolving to more than once per day, and it
-fails at deploy time. A daily sample makes the product pointless.
+Every sample writes the response body alongside the parsed fields. The parsing was wrong once
+already and the weights are provisional — both can be corrected without losing a single sample,
+because `bin/extract.php --rebuild` and `bin/score.php --rebuild` re-derive everything from payloads
+already on disk. The formula guessed at on day one is not locked in.
 
 ---
 
-## Repo layout
+## Running it
 
-```
-divergence/
-├── README.md              you are here
-├── CLAUDE.md              brief for agents working in this repo
-├── TOMORROW.md            the ordered task list — start here
-├── ROADMAP.md             phases from today to submission
-├── config.example.php     shape of the real config, which lives outside the webroot
-├── poller/                cron entry point, one fetcher per endpoint
-├── scoring/              normalisation + Voice / Money / Divergence
-├── lib/                   db, http client, credit accounting
-├── public/                the web app — the only web-served directory
-├── mcp/                   MCP server exposing the same scores as agent tools
-├── sql/                   migrations
-├── bin/                   operational scripts
-│   ├── probe-paths.php      which paths exist — no key needed
-│   ├── verify-endpoints.php which ones our plan may call — needs the key
-│   ├── preflight.php        can this host run the poller at all
-│   └── health.php           is it still recording, and what did it cost
-├── tests/                 scoring fixtures, mostly
-└── docs/
-    ├── architecture.md    components, cadence, failure behaviour
-    ├── data-model.md      tables and why each column exists
-    ├── method.md          exactly how each input is normalised and weighted
-    ├── endpoint-access.md which CMC endpoints actually respond on our tier
-    ├── open-questions.md  blockers to verify before building against them
-    ├── decisions.md       decision log, with the reasoning
-    ├── api-friction.md    where the API got in the way (submission requires this)
-    ├── ui-spec.md         the four screens and what each one shows
-    ├── mcp-tools.md       planned agent tool surface
-    ├── deploy.md          cPanel runbook
-    └── mockups/           the HTML mockup and rendered images
-```
+### Requirements
 
----
+PHP 8.0+ CLI with `curl`, `json` and `pdo_mysql`. MySQL 5.6+. No composer, no framework, no
+node, no build step. The only third-party dependency in the project is CoinMarketCap itself — the
+quadrant chart is hand-drawn SVG rather than a charting library.
 
-## How to run
-
-Recording and extraction run today. Scoring and the web app do not exist yet.
+### Setup
 
 ```bash
-# 1. Does the API surface look the way this repo says it does? No key needed, no credits.
+# 1. Does the API surface look the way this repo says it does? No key, no credits.
 php bin/probe-paths.php
 
 # 2. Point the config at your key and database. Outside the webroot.
@@ -190,7 +147,7 @@ cp config.example.php ../config.php && chmod 600 ../config.php
 # 3. Can this host actually do the job? Run it ON the host, over SSH.
 php bin/preflight.php
 
-# 4. Which endpoints does the plan let us call? ~20 credits.
+# 4. Which endpoints does the plan permit? ~6 credits.
 php bin/verify-endpoints.php --save-fixtures
 
 # 5. Create the tables. 001 is the recording core; 002 is everything derived from it.
@@ -200,69 +157,93 @@ mysql -u USER -p DB < sql/002_derived.sql
 # 6. One sample, verbose, nothing hidden.
 php poller/run.php --once
 
-# 7. Read what was stored into the typed tables. No credits, no network.
+# 7. Read stored payloads into typed rows. No credits, no network.
 php bin/extract.php --verbose
 
-# 8. Is it still recording, and is it still being read?
+# 8. Score them.
+php bin/score.php --verbose
+
+# 9. Is it still recording, and is it still being read?
 php bin/health.php
 ```
 
-The tests need none of the above — no key, no database, no network:
+Then point the document root at `public/` and open it. Full runbook, including the cron entries and
+the cPanel specifics: [`docs/deploy.md`](docs/deploy.md).
+
+The tests need no key, no database and no network:
 
 ```bash
 php tests/run.php
 ```
 
-`--dry-run` fetches and reports without writing, for when you want to see the shape of a response
-before committing to storing it.
+### The MCP server
 
-Then the cron entries, which are the point of all of the above:
+Same scores, as agent tools, over the same queries the web app reads through:
 
-```
-*/10 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --market >> /home/USER/logs/divergence.log 2>&1
-*/30 * * * * /usr/local/bin/php /home/USER/divergence/poller/run.php --assets >> /home/USER/logs/divergence.log 2>&1
-7,27,47 * * * * /usr/local/bin/php /home/USER/divergence/bin/extract.php --quiet --limit=2000 >> /home/USER/logs/divergence.log 2>&1
+```json
+{ "command": "php", "args": ["/home/USER/divergence/mcp/server.php"] }
 ```
 
-The poller takes a per-scope lock, so a slow run makes the next tick skip rather than pile up
-behind it. The extractor is a separate entry because it costs no credits and touches no network:
-a slow extraction must never be able to delay a fetch, which is the half that cannot be caught up
-on later. Full setup, including the parts specific to this host:
-[`docs/deploy.md`](docs/deploy.md).
+Seven tools, none of which takes a write action. Surface: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
 ---
 
 ## CoinMarketCap endpoints used
 
-Two different questions, and the repo answers them with two different scripts.
+Two different questions, answered by two different scripts. **Does the path exist?** —
+`bin/probe-paths.php`, no key needed. **May this plan call it?** — `bin/verify-endpoints.php`, needs
+the key. Both were run; the results are in [`docs/endpoint-access.md`](docs/endpoint-access.md) and
+encoded in `endpoint_access_results()` so the poller cannot schedule a forbidden endpoint by
+accident.
 
-**Does the path exist?** — `php bin/probe-paths.php`, no key needed. Answered 12 September 2026.
-**May our plan call it?** — `php bin/verify-endpoints.php`, needs the key, run from the host. Open.
+| Axis | Endpoint | Used for | Access |
+|---|---|---|---|
+| Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | ✅ |
+| Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share, stablecoin share | ✅ |
+| Money | `/v1/exchange/assets` | exchange reserve level, and its movement | ✅ |
+| Money | `/v2/cryptocurrency/quotes/latest` | per-asset turnover | ✅ |
+| Both | `/v1/cryptocurrency/listings/latest` | the asset universe and its per-asset inputs | ✅ |
+| Ops | `/v1/key/info` | credit budget, at no credit cost | ✅ |
+| Voice | `/v1/community/trending/{topic,token}` | trending rank and its churn | 403 |
+| Voice | `/v1/cryptocurrency/trending/{latest,most-visited,gainers-losers}` | attention before a trade | 403 |
+| Voice | `/v1/content/{latest,posts/top}` | community post volume | 403 |
+| Money | `/v1/exchange/listings/latest` | concentration of volume across venues | 403 |
+| Money | `/v2/cryptocurrency/market-pairs/latest` | derivative pair volume | 403 |
 
-| Axis | Endpoint | Used for | Exists | Plan access |
-|---|---|---|---|---|
-| Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | ✅ | ❓ |
-| Voice | `/v1/community/trending/{topic,token}` | trending rank and its churn | ✅ | ❓ |
-| Voice | `/v1/cryptocurrency/trending/most-visited` | page views — attention before a trade | ✅ | ❓ |
-| Voice | `/v1/content/latest` | community post volume | ✅ | ❓ |
-| Money | `/v2/cryptocurrency/quotes/latest` | turnover = volume ÷ market cap | ✅ | ❓ |
-| Money | `/v1/exchange/listings/latest` | concentration of volume across venues | ✅ | ❓ |
-| Money | `/v1/exchange/assets` | exchange reserve movement | ✅ | ❓ |
-| Both | `/v1/cryptocurrency/listings/latest` | the asset universe | ✅ | ❓ |
-| Ops | `/v1/key/info` | credit budget, at no credit cost | ✅ | ❓ |
+### A real request and response
 
-### There are no derivatives endpoints
+```bash
+curl -s -H "X-CMC_PRO_API_KEY: $KEY" \
+  "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest?convert=USD"
+```
 
-The Money axis was designed around funding rates, open interest and liquidations. **None of them
-exist on the CoinMarketCap API.** 38 candidate paths probed across `/v1/` to `/v4/` — derivatives
-listings, quotes, exchanges, funding rate, open interest, liquidations, futures, perpetuals — every
-one absent. Not 403. Absent, so no plan upgrade produces them.
+```json
+{
+  "data": {
+    "quote": { "USD": {
+      "total_market_cap": 2642374254402.301,
+      "total_volume_24h": 41470272862.18,
+      "total_volume_24h_reported": 213171617521.92,
+      "stablecoin_volume_24h": 40784975505.60018,
+      "derivatives_volume_24h": 307986299285.3649,
+      "last_updated": "2026-09-13T04:37:59.999Z"
+    } },
+    "btc_dominance": 58.682385998691,
+    "active_cryptocurrencies": 8172
+  },
+  "status": { "error_code": "0", "credit_count": 1, "elapsed": 12 }
+}
+```
 
-The Money axis is rebuilt from turnover, exchange concentration and reserve movement. That is a
-weaker axis: it measures money *moving*, not money *committed and leveraged*, and nothing in the
-available data carries leverage. The method page says exactly that. Decision **D10** in
-[`docs/decisions.md`](docs/decisions.md); evidence in
-[`docs/endpoint-access.md`](docs/endpoint-access.md).
+Two of the Money inputs are derived from that single response:
+
+```
+market_turnover     = 41470272862.18 / 2642374254402.30  = 0.0157
+derivatives_to_spot = 307986299285.36 / 41470272862.18   = 7.43
+```
+
+Derivative volume was **7.4× spot volume** at that moment. That ratio is the closest this API gets
+to a leverage reading, and it is not on a chart anywhere on CoinMarketCap's site.
 
 ### The trap that made this worth checking twice
 
@@ -276,52 +257,62 @@ reads the body's error code as well as the status, and `bin/probe-paths.php` run
 on every invocation so a change in CMC's routing surfaces as a failed control rather than as
 silently wrong results.
 
-The same quirk is what makes the prober work at all: CMC resolves the path *before* it validates
-the key, so an invalid key returns 401 on a real path and 404 on a fake one. The API surface can be
+The same quirk is what makes the prober work at all: CMC resolves the path *before* it validates the
+key, so an invalid key returns 401 on a real path and 404 on a fake one. The whole API surface can be
 mapped with no key and no credits.
 
 ---
 
 ## Method
 
-The scoring is published, not hidden — a page in the app states exactly how each input is
-normalised and weighted, and when the normalisation basis changed.
+Published, not hidden. The method page in the app renders directly from `scoring/inputs.php` — the
+same declaration the scorer runs from — so the page cannot describe a method the code does not
+implement.
 
-The one honest wrinkle, documented rather than buried: percentile-rank normalisation is meaningless
-for the first several days because there is no distribution to rank against. So the first seven days
-use **fixed reference ranges**, then the switch to percentile ranking happens once enough history is
-banked. The switchover date and the reason go on the method page.
+Three things it states that a black box would not:
 
-Full spec: [`docs/method.md`](docs/method.md).
+- **Missing inputs are dropped, not zeroed**, and the surviving weights renormalise. Each score
+  records how many of its declared inputs it actually saw. A zero would read as a measurement of a
+  quiet market; absence is a measurement of nothing.
+- **The normalisation switchover.** The first seven days use fixed reference ranges, because
+  percentile rank against no history is meaningless. After that, percentile rank within a trailing
+  window. The switchover date is on the page and the basis is stored on every row.
+- **Per-asset scores use a third basis** — ranked against the rest of the universe at the same
+  instant rather than against their own past ([D17](docs/decisions.md)). Different measurement,
+  never plotted on the same chart.
 
----
-
-## Constraints worth remembering
-
-- **30 requests/minute.** Per-asset polling needs batching. Cap the universe at the top ~100.
-- **15,000 call credits/month** — the Basic plan, measured rather than assumed (D14). This is the
-  binding constraint on the entire product and it sets the cadence (D15). Log credits per call from the response so usage is
-  observable rather than guessed.
-- **Cadence:** 5 minutes market-wide, 15 minutes per asset. Roughly 6k market rows and 600k asset
-  rows over three weeks — about 100 MB with indexes.
-- Keep each cron run short and stateless. Shared hosts kill long-running processes.
-- API key lives **outside the webroot**, never in git. A leaked key is a direct hit on the code
-  quality score.
+Full spec: [`docs/method.md`](docs/method.md) · What it cannot see: [`docs/limits.md`](docs/limits.md)
 
 ---
 
-## Judging criteria, for prioritisation
+## Repo layout
 
-| Weight | Criterion | What it means here |
-|---|---|---|
-| 30% | Does it work | A judge opens the URL and checks numbers against CMC |
-| 25% | Usefulness | Answers a question CMC's own site cannot |
-| 20% | Interesting API use | Unusual endpoint mix, derived metrics rather than re-display |
-| 15% | Code quality and docs | Clean repo, method page, no leaked key |
-| 10% | Presentation | The quadrant trail is the demo moment |
+```
+divergence/
+├── config.example.php     shape of the real config, which lives outside the webroot
+├── poller/run.php         the recorder — the only writer of source data
+├── lib/                   config, http client, db writers, endpoint catalogue, queries
+├── scoring/               the method as data, normalisation, and the recompute pass
+├── public/                the web app — the only web-served directory
+├── mcp/server.php         MCP server over the same queries
+├── sql/                   migrations
+├── bin/                   probe-paths · verify-endpoints · preflight · extract · score · health
+├── tests/                 58 tests, no framework, no network, no database
+└── docs/                  method · data model · decisions · limits · deploy · API friction
+```
 
-When trading off, protect "does it work" first. A smaller product that demonstrably runs beats a
-larger one with a broken panel.
+---
+
+## Constraints
+
+- **50 requests/minute**, measured. Per-asset polling is batched: 100 assets is one call.
+- **15,000 credits/month** on the Basic plan, measured rather than assumed. This is the binding
+  constraint on the whole product. Credits are read from each response and logged, not estimated.
+- **Cadence: 10 minutes market-wide, 30 minutes per asset** — set by the credit budget, not by
+  preference. About 624 credits a day. See [D15](docs/decisions.md) for the arithmetic.
+- Every cron run is short and stateless, and takes a lock so a slow run makes the next tick skip
+  rather than pile up behind it. Shared hosts kill long-running processes.
+- The API key lives **outside the webroot** and never enters git.
 
 ---
 

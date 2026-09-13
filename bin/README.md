@@ -2,8 +2,6 @@
 
 Operational scripts. Never web-reachable.
 
-## Built
-
 | File | Job | Needs a key? |
 |---|---|---|
 | `probe-paths.php` | which API paths exist at all, by the 401/404 split | no |
@@ -11,9 +9,10 @@ Operational scripts. Never web-reachable.
 | `preflight.php` | can this host run the poller — PHP, extensions, HTTPS, MySQL, grants | optional |
 | `health.php` | is it recording *and* is it being extracted: success rate, cadence, longest gap, credits, extraction lag | no |
 | `extract.php` | reads stored payloads into the typed tables. Costs no credits, touches no network | no |
+| `score.php` | turns typed rows into Voice, Money and Divergence. Costs no credits, touches no network | no |
 
 Order on a fresh host: `preflight` → `verify-endpoints` → migrate → `poller/run.php --once` →
-`extract` → `health`.
+`extract` → `score` → `health`.
 
 `health.php` is the one that matters day to day, and it exits non-zero when nothing has landed
 recently *or* when extraction has fallen more than an hour behind, so it doubles as a cron
@@ -26,11 +25,10 @@ parsing fix does not need a separate backfill script: bump `EXTRACTOR_VERSION` i
 and run `php bin/extract.php --rebuild`, which re-reads every payload ever stored and updates the
 derived rows in place rather than doubling the series.
 
-## Planned
-
-| File | Job |
-|---|---|
-| `recompute-scores.php` | rebuilds `scores` at a new `method_version` |
+`score.php` is the same shape as `extract.php` and for the same reason. Change a weight or a range
+in `scoring/inputs.php`, bump `METHOD_VERSION`, run `php bin/score.php --rebuild`, and the whole
+history is rescored from rows already stored. The old series stays under its own version rather than
+being overwritten, so a weighting change is visible in the data instead of quietly rewriting the past.
 
 ## Why two separate endpoint scripts
 
@@ -43,4 +41,6 @@ unknown path with **HTTP 200** and `error_code: 500` "The system is busy". Judgi
 its HTTP status alone briefly recorded six non-existent derivatives endpoints as working.
 
 `verify-endpoints.php` then answers the separate question of what the plan permits, and costs about
-20 credits.
+6 credits. Its results are encoded in `endpoint_access_results()` in `lib/endpoints.php`, which is
+the single table that stops the poller scheduling a 403 and stops the scoring layer offering an
+input it cannot get.
