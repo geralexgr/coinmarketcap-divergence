@@ -480,6 +480,105 @@ would rightly wonder what else had been quietly removed.
 
 ---
 
+## D22 — Backfill the Voice axis from the one endpoint that has a past
+
+**14 September 2026.**
+
+`/v3/fear-and-greed/historical` returns 500 daily readings of the index for one credit. It is
+callable on the Basic plan, it was verified as callable on day one, and it has been sitting in
+`lib/endpoints.php` with `poll: false` and the note *"Fetch once, not on a cron"* since the first
+commit. The fetch-once never happened.
+
+Meanwhile the Voice axis was being min-max scaled against a hand-set 0–100 range — which for the
+fear and greed index means the score *is* the raw input, restated. "The index reads 69" and "Voice
+is 69" are the same sentence. Five hundred days of that input's own distribution were one GET away.
+
+**Settled: fetch it once, by hand, and let the Voice axis reach percentile rank immediately.**
+`bin/backfill-fng.php` is idempotent, costs one credit, refuses to run twice without `--force`, and
+is deliberately not on a cron: the history does not change, and re-fetching it every quarter hour
+would buy a duplicate of yesterday's answer every time.
+
+With it, "69" becomes "the index ranks here against the last 500 days", which is a measurement of
+the present rather than a restatement of the input.
+
+**The consequence is a basis per axis.** Voice clears `FIXED_BASIS_DAYS` immediately; no Money input
+can clear it until the recorder has run a week, because CoinMarketCap publishes no history for a
+single one of them. Deciding both from one date would hold Voice on a worse normalisation for a
+week in exchange for a symmetry nobody asked for. So `basis_for_axis()` asks each axis about its own
+inputs, and `scores` grows `voice_basis` and `money_basis`. The original `basis` column stays and
+now reports the **weaker** of the two, because a row is only comparable to the extent of its
+least-established axis and calling a half-percentile row `percentile` would invite exactly the
+comparison that is not valid.
+
+**This narrows the recorder argument and makes it stronger.** The claim was that none of this can
+be fetched retroactively. The accurate claim is: **Voice can be backfilled 500 days and Money cannot
+be backfilled at all.** The irreplaceable half of the dataset is the Money axis, and saying which
+half is which is better than implying both are equally unobtainable when one of them is a single
+call. The method page now says it in those words.
+
+**Why not poll the historical endpoint regularly.** It answers a question that does not change.
+A daily re-fetch would cost 30 credits a month to learn one new data point that the live endpoint
+already delivers.
+
+---
+
+## D23 — Double the universe by spending nothing, and rank movement as well as size
+
+**14 September 2026.**
+
+Two problems with the screener, one of them expensive.
+
+**`quotes_latest` was buying a second copy of data already on disk.** Every per-asset input that is
+callable on this plan — `turnover`, `volume_change_24h`, `abs_percent_change_24h` — comes from
+`listings_latest`; both extractors call the same `asset_money_metrics()` on the same payload shape.
+And `recompute_assets()` anchors its cross-sections on `listings_latest` alone, so a `quotes_latest`
+row, written at its own timestamp, was never loaded into a single score. It cost 48 credits a day —
+about a tenth of the monthly budget — for rows nothing read.
+
+**Settled: stop polling it.** Kept in the catalogue, verified, with `poll: false`: the access result
+is a measurement worth keeping, and the day a per-asset input appears that `listings_latest` does
+not carry, that is where it comes from.
+
+**The freed credits pay for more assets, and then some.** CoinMarketCap prices
+`listings/latest` per 200 data points returned, so `limit=200` and `limit=100` cost the same single
+credit — the second hundred assets were always free and were never taken.
+
+| | before | after |
+|---|---|---|
+| assets tracked | 100 | 200 |
+| `listings_latest` | 48/day | 48/day |
+| `quotes_latest` | 48/day | 0 |
+| everything else | 308/day | 308/day |
+| **total** | **404/day → 12,120/month** | **356/day → 10,680/month** |
+
+Double the universe for 12% less. The real ceiling past 200 is not credits but `asset_metric` row
+volume on a shared host — 200 assets is roughly 77,000 rows a day — so going further is a storage
+decision, not a budget one, and `asset_universe` in config is where it is made.
+
+**Ranking by gap size answers the same question every day.** An asset whose attention proxy
+permanently outruns its turnover sits at the top of a gap-ranked table forever, which makes that a
+property of the asset rather than news about it. The first look is useful; the fiftieth is not.
+
+**Settled: rank movement alongside size.** `asset_divergence_movers()` ranks each asset on the
+*change* in its divergence between the latest cross-section and the most recent one at or before N
+hours ago, and `asset_quadrant_crossings()` narrows that to the assets whose move carried them
+across a midline — the only kind of move that changes what the reading is called.
+
+Both ends of every comparison are recorded measurements, both are carried on the row, and every
+asset is measured between the *same* two cross-sections. An asset missing from the baseline yields
+no row at all rather than a change measured against whatever happened to be nearest, which would
+report a recording gap as market movement.
+
+**This is still a measurement, not a signal.** "This gap moved 35 points between two recorded
+moments" describes a past interval. It says nothing about the next one, and the copy around both
+tables says so.
+
+**Rank bands, for the same reason.** The top twenty are known to anyone who would open the page, and
+a gap-ranked table over 200 assets spends its first screen on them. The band filters which rows are
+shown and changes no score — every asset is still ranked against the whole recorded cross-section.
+
+---
+
 ## Still undecided
 
 Nothing blocking. These are refinements that need data the deployment has not yet produced:
@@ -490,6 +589,10 @@ Nothing blocking. These are refinements that need data the deployment has not ye
 - **Percentile window length.** 30 days is declared; the deployment will never have that much during
   the hackathon, so in practice the window is "all of recorded history". Worth revisiting only if
   this runs past a month.
-- **Per-endpoint cadence.** Cadence is per scope, so the once-a-day fear and greed index is fetched
-  144 times a day for 143 identical values (D15). Per-endpoint intervals would roughly halve the
-  credit bill and buy back the 5-minute market sample. The first thing to build if credits get tight.
+- **How far past 200 assets to go.** Credits stopped being the constraint at D23; `asset_metric` row
+  volume on a shared host is. 400 assets would cost the same two credits per listings call and
+  roughly 154,000 rows a day. Worth measuring table growth for a fortnight before deciding.
+- **Whether the Voice axis should stay one input.** The backfill (D22) made the one input much more
+  informative but did not make it two. Every trending, community and content endpoint is still 403,
+  and `bin/probe-paths.php` now sweeps that family across v1–v6 rather than v1 alone — the same
+  correction D20 applied to the derivatives family. If one of them resolves, the axis changes.

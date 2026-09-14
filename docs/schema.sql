@@ -79,7 +79,10 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 -- between a fast page and a slow one.
 --
 -- The unique key is what makes extraction re-runnable: a second pass over the same
--- payload updates in place rather than doubling the series.
+-- payload updates in place rather than doubling the series. It includes sampled_at
+-- because one payload can carry many dated readings of the same metric -- the
+-- fear-and-greed historical backfill is 500 of them in a single response -- and a key
+-- of (raw_sample_id, metric) would collapse them to the last one without saying so.
 
 CREATE TABLE IF NOT EXISTS market_metric (
     id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -89,7 +92,7 @@ CREATE TABLE IF NOT EXISTS market_metric (
     value         DECIMAL(24,8)   NOT NULL,
     sampled_at    DATETIME(3)     NOT NULL COMMENT 'UTC, copied from raw_samples.fetched_at',
     PRIMARY KEY (id),
-    UNIQUE KEY uq_sample_metric (raw_sample_id, metric),
+    UNIQUE KEY uq_sample_metric_time (raw_sample_id, metric, sampled_at),
     KEY idx_metric_time (metric, sampled_at),
     KEY idx_time (sampled_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -183,6 +186,8 @@ CREATE TABLE IF NOT EXISTS scores (
     divergence     DECIMAL(7,2)    NOT NULL COMMENT 'signed: money - voice, matching docs/method.md',
     quadrant       ENUM('chatter_without_conviction','loud_and_leveraged','apathy','quiet_but_leveraged') NOT NULL,
     basis          ENUM('fixed','percentile','cross_section') NOT NULL COMMENT 'which normalisation produced this row. cross_section is the per-asset one: ranked against the rest of the universe at the same instant rather than against its own past',
+    voice_basis    ENUM('fixed','percentile','cross_section') NOT NULL DEFAULT 'fixed' COMMENT 'per-axis basis. The two axes no longer reach percentile rank together: fear and greed has 500 days of backfilled history and the Money inputs have only what this deployment recorded, so one basis column can no longer describe a row honestly',
+    money_basis    ENUM('fixed','percentile','cross_section') NOT NULL DEFAULT 'fixed',
     method_version SMALLINT UNSIGNED NOT NULL,
     voice_inputs    TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'how many declared Voice inputs actually had data',
     money_inputs    TINYINT UNSIGNED NOT NULL DEFAULT 0,

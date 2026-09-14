@@ -94,13 +94,49 @@ function mcp_tools(): array
             'name' => 'screen_assets',
             'description' =>
                 'The per-asset table as data: every tracked asset with its Voice score, Money score and '
-                . 'the gap between them. Sortable, and filterable by quadrant.',
+                . 'the gap between them. Sortable, and filterable by quadrant and by rank band. '
+                . 'Sorting by gap returns much the same assets every day — for what has changed, use '
+                . 'find_movers instead.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'sort'     => ['type' => 'string', 'enum' => ['gap', 'voice', 'money', 'symbol', 'rank'], 'default' => 'gap'],
                     'quadrant' => ['type' => 'string', 'enum' => $quadrantEnum, 'description' => 'Optional filter.'],
+                    'band'     => [
+                        'type' => 'string',
+                        'enum' => ['all', 'top50', 'mid', 'deep'],
+                        'default' => 'all',
+                        'description' =>
+                            'Rank band by market cap: top50 is ranks 1-50, mid is 51-200, deep is 101-200. '
+                            . 'A filter on which rows come back; every asset is still scored against the '
+                            . 'whole cross-section.',
+                    ],
                     'limit'    => ['type' => 'integer', 'minimum' => 1, 'maximum' => 500, 'default' => 50],
+                ],
+                'required' => [],
+            ],
+        ],
+        [
+            'name' => 'find_movers',
+            'description' =>
+                'The assets whose gap moved most between two recorded cross-sections, rather than the '
+                . 'assets whose gap is largest. The largest gaps are largely the same names daily — an '
+                . 'attention proxy that permanently outruns turnover is a property of the asset, not news '
+                . 'about it. Every row carries both ends of the comparison and the two sample times, so '
+                . 'the change is checkable. A measurement of a past interval; it says nothing about what '
+                . 'happens next. Set only_crossings to restrict to assets that changed quadrant.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'hours'          => [
+                        'type' => 'integer', 'minimum' => 1, 'maximum' => 720, 'default' => 24,
+                        'description' => 'How far back the baseline cross-section is taken from.',
+                    ],
+                    'only_crossings' => [
+                        'type' => 'boolean', 'default' => false,
+                        'description' => 'Only assets whose move carried them into a different quadrant.',
+                    ],
+                    'limit'          => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'default' => 20],
                 ],
                 'required' => [],
             ],
@@ -222,14 +258,42 @@ function mcp_call_tool(string $name, array $args): array
             $quadrants = ['loud_and_leveraged', 'chatter_without_conviction', 'quiet_but_leveraged', 'apathy'];
             $quadrant = in_array($args['quadrant'] ?? '', $quadrants, true) ? (string) $args['quadrant'] : null;
             $limit = max(1, min(500, (int) ($args['limit'] ?? 50)));
-            $rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $quadrant, $limit);
+
+            $bands = ['all' => [null, null], 'top50' => [1, 50], 'mid' => [51, 200], 'deep' => [101, 200]];
+            $band = isset($bands[$args['band'] ?? 'all']) ? (string) ($args['band'] ?? 'all') : 'all';
+            [$minRank, $maxRank] = $bands[$band];
+
+            $rows = latest_asset_scores(
+                $pdo, METHOD_VERSION, $sort, $quadrant, $limit, false, $minRank, $maxRank
+            );
             return [
                 'sort'       => $sort,
                 'quadrant'   => $quadrant,
+                'band'       => $band,
                 'basis'      => 'cross_section',
                 'sampled_at' => $rows === [] ? null : $rows[0]['sampled_at'],
                 'count'      => count($rows),
                 'assets'     => $rows,
+            ];
+
+        case 'find_movers':
+            $hours = max(1, min(720, (int) ($args['hours'] ?? 24)));
+            $limit = max(1, min(200, (int) ($args['limit'] ?? 20)));
+            $rows = !empty($args['only_crossings'])
+                ? asset_quadrant_crossings($pdo, METHOD_VERSION, $hours, $limit)
+                : asset_divergence_movers($pdo, METHOD_VERSION, $hours, $limit);
+
+            return [
+                'hours'      => $hours,
+                'sort'       => 'absolute change in divergence, descending',
+                'basis'      => 'cross_section',
+                // Both ends of the interval, so an empty result reads as "no recorded
+                // cross-section that old" rather than "nothing moved".
+                'from'       => $rows === [] ? null : $rows[0]['sampled_at_then'],
+                'to'         => $rows === [] ? null : $rows[0]['sampled_at'],
+                'count'      => count($rows),
+                'assets'     => $rows,
+                'note'       => 'The difference between two recorded measurements. Not advice, and not a forecast.',
             ];
 
         case 'get_divergence_history':

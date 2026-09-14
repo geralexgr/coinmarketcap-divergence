@@ -136,7 +136,7 @@ A quadrant is a label for where the point currently sits. It is not a rating and
 Which basis produced a row is stored **on the row** and never inferred. Scores from different bases
 are not strictly comparable, and the app says so rather than mixing them on one chart.
 
-### Basis A — fixed reference ranges (market-wide, days 1–7)
+### Basis A — fixed reference ranges (market-wide, until an axis has 7 days of history)
 
 Percentile rank against trailing history is meaningless when there is no history: the first day's
 scores would be ranked against a handful of samples and the plot would jump between 0 and 100 for no
@@ -149,25 +149,51 @@ The ranges come from the live payloads captured on 13 September 2026 and from th
 recording. They are provisional and should be re-derived from a fortnight of real distributions,
 with `METHOD_VERSION` bumped when they are.
 
-### Basis B — percentile rank (market-wide, day 8 onward)
+### Basis B — percentile rank (market-wide, once an axis has 7 days of history)
 
-Each input scores as its percentile rank within a trailing 30-day window — or all of recorded
-history, whichever is shorter, which during this deployment is the latter.
+Each input scores as its percentile rank within a trailing window of its own history — or all the
+history there is, whichever is shorter.
+
+**The window is per input, because the history available is per input.** `fear_greed` is ranked
+against **500 days**, which is what `/v3/fear-and-greed/historical` returns and what was backfilled
+([D22](decisions.md)). Every other input is ranked against **30 days**, which for this deployment
+means all of them: nothing else has a past. Ranking the backfilled input against 30 days would use
+6% of the history fetched and would give a once-daily input a percentile resolution of 3.3 points.
+
+"The 82nd percentile" is not a complete statement without saying of what, so the method page prints
+the window beside each input.
 
 Ties count half, so a series of identical readings scores 50 rather than 0 or 100. That is what "no
 information" should look like; counting ties as "below" would score a flat market at 100 and put it
 in the wrong quadrant on every sample.
 
-### The switchover
+### The switchover happens per axis
 
-Measured from the deployment's own first sample, not from a calendar date, so a deployment that
-started recording late gets its own fixed week. **The date is published on the method page** with the
-reason, and the `basis` column on every row records which method produced it.
+Measured from the earliest reading **that axis's own inputs** have, not from a calendar date and not
+from the deployment's first sample. A deployment that started recording late gets its own fixed
+week; an axis whose input can be backfilled gets the basis its history actually supports.
+
+The two axes do not reach it together, and that is the point:
+
+| Axis | History available | Basis |
+|---|---|---|
+| **Voice** | 500 daily readings, backfilled once from `/v3/fear-and-greed/historical` | percentile from the first score |
+| **Money** | only what this deployment recorded — CMC publishes no history for open interest, funding, liquidations, turnover or exchange flow | fixed for the first week, then percentile |
+
+Holding Voice on a hand-set 0–100 range for a week would have meant a week of worse measurement in
+exchange for a symmetry nobody asked for — and for the fear and greed index specifically, the fixed
+basis means the score *is* the raw input restated. `voice_basis` and `money_basis` are recorded on
+every row; the row's summary `basis` reports **the weaker of the two**, because a row is only
+comparable to the extent of its least-established axis. **The current basis of each axis is printed
+on the method page.** See [D22](decisions.md).
+
+This is also the precise version of the recorder claim: **the Voice axis can be backfilled 500 days
+and the Money axis cannot be backfilled at all.**
 
 ### Basis C — cross-section (per asset, from the first sample)
 
 Per-asset inputs are ranked against **the rest of the tracked universe at the same instant** rather
-than against that asset's own past: turnover in the 92nd percentile of the top 100 right now.
+than against that asset's own past: turnover in the 92nd percentile of the top 200 right now.
 
 That is the question a screener is actually asked, and it needs no banked history, so the table
 works from day one. It is a different measurement from the market-wide series and the two are never

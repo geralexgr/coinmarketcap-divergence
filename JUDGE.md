@@ -59,8 +59,11 @@ The header says `recording since 13 Sep, N samples`. That is a live count from `
 written-down figure. Reload in fifteen minutes and it will be larger.
 
 The trail on the quadrant is the part that matters: **CoinMarketCap has no historical endpoint for
-sentiment or positioning.** Price history can be fetched retroactively; this cannot. Every point on
-that line exists only because something was recording at the time.
+open interest, funding, liquidations, turnover or exchange flow.** Price history can be fetched
+retroactively; the Money axis cannot, at all. Sentiment is the one exception — 500 days of it, for
+one credit, which this project fetches once ([D22](docs/decisions.md)) — so the vertical half of
+that line could be reconstructed by anyone and the horizontal half could not. Every point of the
+Money axis exists only because something was recording at the time.
 
 Recording health — sample count, longest gap, failure rate, credits consumed — is at the bottom of
 [/method.php](https://coinmarketcap.geralexgr.com/method.php), live from `fetch_log`.
@@ -73,7 +76,7 @@ cd coinmarketcap-divergence
 php tests/run.php
 ```
 
-72 tests, no framework, no network, no database, no composer. They cover the parts that fail
+82 tests, no framework, no network, no database, no composer. They cover the parts that fail
 *silently*: normalisation boundaries, a missing input being scored as zero, a percentile that peeks
 at the future, and the readout copy being grepped for future-tense words.
 
@@ -111,17 +114,23 @@ greps the generated copy for future-tense words.
 
 We would rather you heard this from us than found it.
 
-- **The Voice axis is one input, updated once a day.** Every trending, community and content
+- **The Voice axis is still one input, updated once a day.** Every trending, community and content
   endpoint answers 403 on this key — re-verified endpoint by endpoint. So Voice steps daily while
   Money moves every fifteen minutes, and the horizontal stretches in the trail are that, not a quiet
-  market. [docs/limits.md](docs/limits.md)
+  market. What changed is that the one input now carries 500 days of its own history, so it is
+  scored as a percentile rank rather than as the raw index restated — better, and still one input.
+  [docs/limits.md](docs/limits.md), [D22](docs/decisions.md)
+- **We shipped an endpoint that fed nothing, for a month.** `quotes_latest` was polled every 30
+  minutes at a tenth of the credit budget, returning per-asset metrics `listings_latest` already
+  carried in the same run, into rows the per-asset scorer never read. Found by tracing which
+  endpoint each scored metric actually comes from. [D23](docs/decisions.md)
 - **The per-asset Voice proxy is price-derived**, because there is no per-asset attention data at
   all on this plan. It is the weakest input in the product and it is labelled as such wherever it
   appears. The worry was that it would correlate with the Money axis and the screener would rank one
   thing twice; measured across the live screener, the two columns correlate at **−0.00**, so that
   particular failure is not occurring. [D18](docs/decisions.md)
-- **Open interest is BTC only.** The endpoint takes one symbol per call, so a hundred assets would
-  be a hundred credits per sample. Liquidations do not have this limit — 100 assets for one credit.
+- **Open interest is BTC only.** The endpoint takes one symbol per call, so two hundred assets would
+  be two hundred credits per sample. Liquidations do not have this limit — 200 assets for one credit.
 - **The screener hides stablecoins by default.** High turnover with no narrative is what a
   stablecoin is, so ranking them by that gap measures a definition. They are one click away and the
   page says so. [D21](docs/decisions.md)
@@ -137,7 +146,7 @@ We would rather you heard this from us than found it.
 | What it is and why | [README.md](README.md) |
 | How every number is produced | [docs/method.md](docs/method.md) |
 | What it cannot see | [docs/limits.md](docs/limits.md) |
-| Why it was built this way | [docs/decisions.md](docs/decisions.md) — 20 decisions, with the reasoning |
+| Why it was built this way | [docs/decisions.md](docs/decisions.md) — 23 decisions, with the reasoning |
 | Where the API got in the way | [docs/api-friction.md](docs/api-friction.md) |
 | Which endpoints respond, measured | [docs/endpoint-access.md](docs/endpoint-access.md) |
 | Deploying it yourself | [DEPLOY.md](DEPLOY.md) |

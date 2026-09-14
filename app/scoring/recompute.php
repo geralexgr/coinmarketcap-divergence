@@ -238,6 +238,43 @@ function history_before(array $points, string $at, int $windowDays = PERCENTILE_
 }
 
 /**
+ * The earliest recorded reading across one axis's declared inputs, or null if it has
+ * none.
+ *
+ * This is what decides when the axis switches to percentile rank, and it is
+ * deliberately not the recorder's start date. Those were the same number until the
+ * fear-and-greed history was backfilled; now Voice's earliest reading is roughly 500
+ * days before this deployment's first sample and Money's is the first sample itself.
+ *
+ * The earliest across the axis, not the latest, because an axis whose weights are
+ * renormalised over whatever survived is already comfortable with its inputs having
+ * different coverage — and the alternative would hold the whole axis back for one
+ * late-added input.
+ *
+ * @param array<int,array<string,mixed>> $inputs From `available_inputs()`.
+ * @param array<string,array<int,array{at:string,value:float,raw_sample_id:int}>> $series
+ */
+function axis_history_start(array $inputs, array $series): ?string
+{
+    $earliest = null;
+
+    foreach ($inputs as $input) {
+        $points = $series[(string) $input['metric']] ?? [];
+        if ($points === []) {
+            continue;
+        }
+        // load_market_series orders by sampled_at ascending, so the first point is the
+        // oldest this metric has.
+        $at = (string) $points[0]['at'];
+        if ($earliest === null || $at < $earliest) {
+            $earliest = $at;
+        }
+    }
+
+    return $earliest;
+}
+
+/**
  * Write one batch of score rows.
  *
  * Upserts on `(scope, cmc_id, sampled_at, method_version)`, so recomputing over ground
@@ -254,7 +291,7 @@ function write_scores(PDO $pdo, array $rows, int $chunk = 200): int
         $placeholders = [];
         $values = [];
         foreach ($batch as $row) {
-            $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
             array_push(
                 $values,
                 $row['scope'],
@@ -265,6 +302,8 @@ function write_scores(PDO $pdo, array $rows, int $chunk = 200): int
                 $row['divergence'],
                 $row['quadrant'],
                 $row['basis'],
+                $row['voice_basis'] ?? $row['basis'],
+                $row['money_basis'] ?? $row['basis'],
                 $row['method_version'],
                 $row['voice_inputs'],
                 $row['money_inputs'],
@@ -276,6 +315,7 @@ function write_scores(PDO $pdo, array $rows, int $chunk = 200): int
         $stmt = $pdo->prepare(
             'INSERT INTO scores
                 (scope, cmc_id, sampled_at, voice, money, divergence, quadrant, basis,
+                 voice_basis, money_basis,
                  method_version, voice_inputs, money_inputs, inputs_possible, computed_at)
              VALUES ' . implode(', ', $placeholders) . '
              ON DUPLICATE KEY UPDATE
@@ -284,6 +324,8 @@ function write_scores(PDO $pdo, array $rows, int $chunk = 200): int
                 divergence      = VALUES(divergence),
                 quadrant        = VALUES(quadrant),
                 basis           = VALUES(basis),
+                voice_basis     = VALUES(voice_basis),
+                money_basis     = VALUES(money_basis),
                 voice_inputs    = VALUES(voice_inputs),
                 money_inputs    = VALUES(money_inputs),
                 inputs_possible = VALUES(inputs_possible),
@@ -353,7 +395,15 @@ function recompute_market(PDO $pdo, bool $rebuild = false, ?int $limit = null, b
         }
     }
 
-    $firstSample = (string) $moments[0];
+    // Each axis reaches percentile rank on its own schedule, from the history its own
+    // inputs have rather than from the date this deployment started recording. The
+    // fear-and-greed backfill gives Voice 500 days; no Money input has any history at
+    // all beyond what was recorded here, because CMC publishes none. See D22.
+    $axisStart = [
+        'voice' => axis_history_start($inputs['voice'], $series),
+        'money' => axis_history_start($inputs['money'], $series),
+    ];
+
     $rows = [];
     $skipped = 0;
     $reasons = [];
@@ -367,10 +417,11 @@ function recompute_market(PDO $pdo, bool $rebuild = false, ?int $limit = null, b
             break;
         }
 
-        $basis = basis_for($firstSample, $at);
+        $basis = [];
         $axes = [];
 
         foreach ($inputs as $axis => $declared) {
+            $basis[$axis] = basis_for_axis($axisStart[$axis], $at);
             $values = [];
             $history = [];
             foreach ($declared as $input) {
@@ -380,14 +431,20 @@ function recompute_market(PDO $pdo, bool $rebuild = false, ?int $limit = null, b
                     continue;
                 }
                 $values[$metric] = $point['value'];
-                if ($basis === 'percentile') {
-                    $history[$metric] = history_before($series[$metric], $at);
+                if ($basis[$axis] === 'percentile') {
+                    // Per input, not per axis: the window is a property of how much
+                    // history that input has. fear_greed is backfilled 500 days and
+                    // everything else has only what was recorded.
+                    $history[$metric] = history_before($series[$metric], $at, percentile_window_days($metric));
                 }
             }
-            $axes[$axis] = score_axis($declared, $values, $basis, $history);
+            $axes[$axis] = score_axis($declared, $values, $basis[$axis], $history);
         }
 
-        $row = compose_score($axes['voice'], $axes['money'], $at, $basis);
+        $row = compose_score(
+            $axes['voice'], $axes['money'], $at,
+            $basis['voice'], 0, 'market', $basis['money']
+        );
         if ($row === null) {
             $skipped++;
             $reason = $axes['voice']['score'] === null ? 'no Voice input in range' : 'no Money input in range';
@@ -414,7 +471,7 @@ function recompute_market(PDO $pdo, bool $rebuild = false, ?int $limit = null, b
  * **A different normalisation, on purpose.** Market-wide scores rank a reading against
  * the same reading's own past, which is why they need a week of history before they mean
  * much. Per-asset scores rank each asset against *the rest of the universe at the same
- * moment* — turnover in the 92nd percentile of the top 100 right now. That is the
+ * moment* — turnover in the 92nd percentile of the top 200 right now. That is the
  * question a screener is actually asked, it needs no banked history so the table works
  * from the first sample, and it is why the basis on these rows reads `cross_section`
  * rather than `fixed` or `percentile`. The method page states this plainly; the two

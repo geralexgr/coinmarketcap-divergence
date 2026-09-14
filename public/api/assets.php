@@ -3,6 +3,13 @@
  * The screener as data.
  *
  *     api/assets.php?sort=gap&quadrant=quiet_but_leveraged&limit=50
+ *     api/assets.php?band=mid                  # ranks 51-200 only
+ *     api/assets.php?view=movers&hours=24      # ranked by change in gap, not size of gap
+ *     api/assets.php?view=crossings&hours=168  # only those that changed quadrant
+ *
+ * `view=movers` answers the question the default sort cannot: the largest gaps are
+ * largely the same assets every day, because a permanent property of an asset is not
+ * news about it. See `asset_divergence_movers()`.
  */
 
 declare(strict_types=1);
@@ -26,10 +33,46 @@ $limit = max(1, min(500, (int) ($_GET['limit'] ?? 100)));
 // Excluded by default, matching the screener. ?stablecoins=1 includes them.
 $withStables = ($_GET['stablecoins'] ?? '') === '1';
 
-$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $quadrant, $limit, $withStables);
+// Rank bands. A filter on which rows are returned, never on how they were scored:
+// every asset is ranked against the whole recorded cross-section either way (D23).
+$bands = [
+    ''      => [null, null],
+    'top50' => [1, 50],
+    'mid'   => [51, 200],
+    'deep'  => [101, 200],
+];
+$band = query_choice('band', array_keys($bands), '');
+[$minRank, $maxRank] = $bands[$band];
+
+$view  = query_choice('view', ['screener', 'movers', 'crossings'], 'screener');
+$hours = max(1, min(24 * 30, (int) ($_GET['hours'] ?? 24)));
+
+$window = null;
+if ($view === 'movers' || $view === 'crossings') {
+    $rows = $view === 'crossings'
+        ? asset_quadrant_crossings($pdo, METHOD_VERSION, $hours, $limit, $withStables)
+        : asset_divergence_movers($pdo, METHOD_VERSION, $hours, $limit, $withStables);
+
+    // Both ends of every comparison, so a consumer can check the change rather than
+    // trust it — and so an empty result is legibly "no cross-section that old" rather
+    // than "nothing moved".
+    $window = [
+        'hours'        => $hours,
+        'from'         => $rows === [] ? null : $rows[0]['sampled_at_then'],
+        'to'           => $rows === [] ? null : $rows[0]['sampled_at'],
+        'measured_for' => 'every row, over the same two recorded cross-sections',
+    ];
+} else {
+    $rows = latest_asset_scores(
+        $pdo, METHOD_VERSION, $sort, $quadrant, $limit, $withStables, $minRank, $maxRank
+    );
+}
 
 echo json_encode([
-    'sort'           => $sort,
+    'view'           => $view,
+    'sort'           => $view === 'screener' ? $sort : 'absolute change in divergence, descending',
+    'band'           => $band === '' ? 'all' : $band,
+    'window'         => $window,
     'quadrant'       => $quadrant,
     'stablecoins'    => $withStables ? 'included' : 'excluded (pass ?stablecoins=1 to include)',
     'method_version' => METHOD_VERSION,

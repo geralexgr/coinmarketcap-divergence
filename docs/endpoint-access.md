@@ -15,7 +15,7 @@ and D15.
 | | Callable | Forbidden |
 |---|---|---|
 | **Voice** | `fear_and_greed`, `fear_and_greed_historical` | all 5 trending/community endpoints, both content endpoints |
-| **Money** | `quotes_latest`, `exchange_assets` | `exchange_listings`, `market_pairs_derivatives`, `price_performance` |
+| **Money** | `derivatives_pairs`, `liquidations`, `derivatives_exchanges`, `exchange_assets` (`quotes_latest` is callable but retired — it duplicated `listings_latest`, see D23) | `exchange_listings`, `market_pairs_derivatives`, `price_performance` |
 | **Support** | `key_info`, `global_metrics`, `listings_latest` | — |
 
 Two headline consequences:

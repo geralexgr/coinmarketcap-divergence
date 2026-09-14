@@ -37,7 +37,11 @@ const DIVERGENCE_DEFAULTS = [
     // deployment is one self-contained folder with nothing to create by hand. Set an
     // absolute path to override, or false to disable file logging entirely.
     'log_path'                => null,
-    'asset_universe'          => 100,
+    // Top N by market cap. 200 because CMC prices listings/latest per 200 data points
+    // returned, so 200 assets and 100 assets cost the same single credit (D23). Raising
+    // it past 200 costs a credit per further 200 and multiplies asset_metric row volume,
+    // which is the real ceiling on a shared host rather than the credit budget.
+    'asset_universe'          => 200,
     'request_timeout'         => 10,
     // Measured 13 Sep 2026 on the Basic plan (D14). bin/health.php prefers the figure
     // CoinMarketCap itself reports via /v1/key/info and falls back to this.

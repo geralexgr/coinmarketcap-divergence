@@ -78,16 +78,33 @@ approximately. No tool takes a write action. See `mcp-tools.md`.
 
 | What | Interval | Credits/day | Notes |
 |---|---|---|---|
-| Market-wide | 10 min | 576 | global metrics, listings, fear and greed, exchange assets |
-| Per asset | 30 min | 48 | top ~100 assets in one batched call |
-| Extract | 20 min, offset | 0 | reads stored payloads only |
-| Score | 30 min, offset | 0 | reads typed rows only |
+| `global_metrics` | 15 min | 96 | total cap, volume, dominance, derivatives volume |
+| `derivatives_pairs` | 15 min | 96 | open interest, funding rate, OI against volume |
+| `liquidations` | 15 min | 96 | 200 assets in one call |
+| `listings_latest` | 30 min | 48 | the universe **and** every callable per-asset input, `limit=200` |
+| `exchange_assets` | 120 min | 12 | exchange reserve |
+| `fear_and_greed` | 180 min | 8 | updated once a day by CMC; polling it faster buys nothing |
+| `key_info` | 60 min | 0 | free |
+| Extract | 15 min, offset | 0 | reads stored payloads only |
+| Score | 15 min, offset | 0 | reads typed rows only |
 
-About 404 credits a day against a 15,000/month budget. Roughly 2,500 market rows and 250,000 asset
-rows over three weeks — 100–150 MB with indexes.
+**356 credits a day — 10,680 a month against a 15,000 budget.** `quotes_latest` used to add 48 a day
+and fed nothing: every per-asset input it returned was already in the `listings_latest` payload, and
+the per-asset scorer anchors on `listings_latest` alone, so not one of its rows ever reached a score
+(D23). Retiring it paid for doubling the universe to 200, which cost nothing anyway because CMC
+prices `listings/latest` per 200 data points returned.
+
+Roughly 2,500 market rows and 500,000 asset rows over three weeks — the asset table is now the
+thing to watch, not the credit bill.
 
 **The cadence is set by the budget, not by preference** (D15). The 5/15-minute cadence this repo was
 originally designed around costs ~1,250 a day and exhausts the plan in twelve days.
+
+**Extract and score run on the same tick as the poller, offset behind it.** Neither spends a credit
+or makes a network call, so there was never a budget reason for them to run slower than the thing
+they derive from — and when they did, the front page could show a score half an hour old while
+fresher samples sat unread. They stay separate cron entries because a slow derivation must never be
+able to delay a fetch; that is the rule, and the interval was never part of it.
 
 ## Rate and credit budget
 

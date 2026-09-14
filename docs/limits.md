@@ -94,7 +94,7 @@ pollers do not start in the same minute:
 **This costs the product nothing, because per-endpoint cadence absorbs it.** The poller is a cheap
 tick that decides what is due; with the tick at 15 minutes every endpoint still gets exactly the
 interval it declares — 15 minutes for the leverage inputs, 30 for the universe, 120 for reserves,
-180 for sentiment. 404 credits a day, unchanged.
+180 for sentiment. 356 credits a day, unchanged.
 
 It would have cost a great deal under the original design, where one interval applied to a whole
 scope and the cron schedule *was* the sampling rate.
@@ -110,11 +110,14 @@ cosmetic.
 
 15,000 credits a month. Each endpoint carries its own interval — 15 minutes for the leverage
 inputs, 30 for the universe, 120 for exchange reserves, 180 for sentiment — chosen to fit the budget
-rather than because they are ideal. **404 credits a day**, 19% under.
+rather than because they are ideal. **356 credits a day**, 29% under.
 
-A known inefficiency: cadence is per *scope*, so the once-a-day fear and greed index is fetched 144
-times a day for 143 identical values. Per-endpoint cadence would roughly halve the bill. It is the
-first thing to build if credits get tight. See [D15](decisions.md).
+The inefficiency that used to be recorded here — a once-a-day index fetched 144 times a day — was
+fixed by per-endpoint cadence. The one found since was larger: `quotes_latest` spent 48 credits a
+day returning per-asset metrics that `listings_latest` already carried in the same run, into rows
+the per-asset scorer never read, because it anchors its cross-sections on `listings_latest` alone.
+Retiring it cut the bill and paid for doubling the tracked universe to 200 assets. See
+[D15](decisions.md) and [D23](decisions.md).
 
 ## Things confirmed rather than assumed
 

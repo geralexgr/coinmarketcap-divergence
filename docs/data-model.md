@@ -115,7 +115,8 @@ usually CoinMarketCap changing a response shape and should be read the same day.
 | `money` | DECIMAL(6,2) | 0–100 |
 | `divergence` | DECIMAL(7,2) | signed |
 | `quadrant` | ENUM | the four readings |
-| `basis` | ENUM('fixed','percentile','cross_section') | which normalisation produced this row |
+| `basis` | ENUM('fixed','percentile','cross_section') | the row summary: **the weaker of the two axis bases**, so a half-established row is never advertised as fully established |
+| `voice_basis`, `money_basis` | ENUM(same) | the basis of each axis. The two no longer switch together — Voice has 500 backfilled days of fear and greed, Money has only what was recorded (D22) |
 | `method_version` | SMALLINT | bumped whenever weights, ranges or the input list change |
 | `voice_inputs`, `money_inputs` | TINYINT | how many declared inputs actually had data |
 | `inputs_possible` | TINYINT | how many were declared across both axes |
@@ -127,11 +128,17 @@ updates in place instead of doubling the trail.
 
 The three basis values are three different measurements:
 
-- `fixed` — market-wide, first seven days, min-max against hand-set reference ranges
-- `percentile` — market-wide thereafter, rank within a trailing window of its own history
+- `fixed` — market-wide, min-max against hand-set reference ranges, while that axis has under seven
+  days of history
+- `percentile` — market-wide once that axis has seven days, rank within a trailing window of its own
+  history
 - `cross_section` — **per asset**, ranked against the rest of the universe at the same instant
   rather than against its own past (D17). This is why the screener works from the first sample, and
   why per-asset and market-wide scores are never plotted on one chart.
+
+**Read `voice_basis` and `money_basis`, not `basis`, when you want to know how a score was
+produced.** `basis` predates the split, still exists because the charts group on it, and now reports
+the weaker of the two.
 
 `voice_inputs` and `money_inputs` are the honesty columns. On the Basic plan the Voice axis has one
 input of three declared, and a score built from one input is a weaker claim than one built from
@@ -139,7 +146,7 @@ three. Storing the count means the app can print it rather than leaving a reader
 
 ### `asset_universe` — which assets are tracked
 `cmc_id`, `symbol`, `name`, `rank_last`, `first_seen`, `last_seen`. Membership changes over time
-and the change itself is data — an asset entering the top 100 is worth being able to see.
+and the change itself is data — an asset entering the top 200 is worth being able to see.
 
 `first_seen`/`last_seen` rather than `added_at`/`removed_at`: a departure is not an event the API
 reports, it is an absence, so it is recorded as `last_seen` ceasing to move. The upsert uses

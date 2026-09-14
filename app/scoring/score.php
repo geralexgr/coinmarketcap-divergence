@@ -78,18 +78,34 @@ function divergence_sentence(float $divergence): string
  * and half a point on a two-axis plot is not a measurement — the sample is left out and
  * the trail shows the gap.
  *
+ * `$moneyBasis` defaults to `$basis`, so a caller with one basis for the whole row — the
+ * per-asset cross-section, and every test written before the split — passes one argument
+ * and gets the old behaviour. The market scorer passes two, because since the
+ * fear-and-greed backfill its axes no longer reach percentile rank at the same time
+ * (D22).
+ *
  * @param array{score:?float,used:int,possible:int,parts:array} $voice
  * @param array{score:?float,used:int,possible:int,parts:array} $money
  * @return array<string,mixed>|null
  */
-function compose_score(array $voice, array $money, string $sampledAt, string $basis, int $cmcId = 0, string $scope = 'market'): ?array
-{
+function compose_score(
+    array $voice,
+    array $money,
+    string $sampledAt,
+    string $basis,
+    int $cmcId = 0,
+    string $scope = 'market',
+    ?string $moneyBasis = null
+): ?array {
     if ($voice['score'] === null || $money['score'] === null) {
         return null;
     }
 
     $v = (float) $voice['score'];
     $m = (float) $money['score'];
+
+    $voiceBasis = $basis;
+    $moneyBasis ??= $basis;
 
     return [
         'scope'           => $scope,
@@ -99,7 +115,11 @@ function compose_score(array $voice, array $money, string $sampledAt, string $ba
         'money'           => $m,
         'divergence'      => divergence_of($v, $m),
         'quadrant'        => quadrant_of($v, $m),
-        'basis'           => $basis,
+        // The weaker of the two, so a row is never advertised as more established than
+        // its least-established axis. See combined_basis().
+        'basis'           => combined_basis($voiceBasis, $moneyBasis),
+        'voice_basis'     => $voiceBasis,
+        'money_basis'     => $moneyBasis,
         'method_version'  => METHOD_VERSION,
         'voice_inputs'    => $voice['used'],
         'money_inputs'    => $money['used'],

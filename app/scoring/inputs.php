@@ -37,27 +37,69 @@ declare(strict_types=1);
  *     *committed and at risk* rather than money changing hands. The substitutes that stood
  *     in for them are kept at weight zero rather than deleted, so the history of what the
  *     axis used to be stays legible.
+ * 3 — the Voice axis onto percentile rank, 500 days early. `fear_and_greed_historical`
+ *     was declared callable from the first commit and never fetched, so Voice was being
+ *     min-maxed against a hand-set 0-100 range while five hundred days of its own
+ *     distribution sat one credit away. With the history backfilled, "the index reads 69"
+ *     becomes "69 ranks here against the last 500 days", which is a measurement of the
+ *     present rather than a restatement of the input. The two axes therefore no longer
+ *     switch basis together, and the basis is recorded per axis. See D22.
  */
-const METHOD_VERSION = 2;
+const METHOD_VERSION = 3;
 
 /**
- * How long the fixed reference ranges are used before percentile ranking takes over.
+ * How much history an axis needs before percentile ranking takes over from the fixed
+ * reference ranges.
  *
  * Percentile rank against trailing history is meaningless when there is no history —
  * the first day's scores would be ranked against a handful of samples and the plot
- * would jump between 0 and 100 for no reason. So the first week is min-max scaled
- * against hand-set ranges, and the switchover is published rather than hidden.
+ * would jump between 0 and 100 for no reason. So a thin axis is min-max scaled against
+ * hand-set ranges, and the switchover is published rather than hidden.
+ *
+ * Measured **per axis**, against the history that axis's own inputs have, not against
+ * the date this deployment started recording. Voice clears it immediately because
+ * `fear_and_greed_historical` backfills 500 days; Money cannot clear it until the
+ * recorder has run a week, because CoinMarketCap publishes no history for a single one
+ * of its inputs. That asymmetry is the whole reason the recorder matters, and it is
+ * better stated than averaged away. See `basis_for_axis()` and D22.
  */
 const FIXED_BASIS_DAYS = 7;
 
 /**
- * The trailing window percentile rank is taken over, once there is enough history.
+ * The default trailing window a percentile rank is taken over.
  *
- * 30 days is longer than this deployment will have during the hackathon, which is the
- * honest position: the window is "everything recorded so far, up to 30 days", and the
- * method page says which of the two it currently is.
+ * 30 days is longer than the Money axis will have for a month of recording, which is the
+ * honest position: for those inputs the window is "everything recorded so far, up to 30
+ * days", and the method page says which of the two it currently is.
  */
 const PERCENTILE_WINDOW_DAYS = 30;
+
+/**
+ * The window for an input that has more history than the recorder produced.
+ *
+ * `fear_greed` is backfilled 500 days from CoinMarketCap's own historical endpoint
+ * (D22), and 500 is what that endpoint returns. Ranking it against the last 30 days
+ * would use 6% of the history that was fetched and would rank a daily input against
+ * thirty data points — a percentile with a resolution of 3.3 points, which is coarse
+ * enough to move the score for no reason.
+ */
+const BACKFILLED_WINDOW_DAYS = 500;
+
+/**
+ * How far back the percentile for one input looks.
+ *
+ * Per input rather than per axis, because the window is a property of the history the
+ * input has, and an axis is free to carry inputs with different amounts of it. The
+ * method page prints the window beside each input for exactly that reason: "the 82nd
+ * percentile" is not a complete statement without saying of what.
+ */
+function percentile_window_days(string $metric): int
+{
+    return match ($metric) {
+        'fear_greed' => BACKFILLED_WINDOW_DAYS,
+        default      => PERCENTILE_WINDOW_DAYS,
+    };
+}
 
 /**
  * One input on one axis.
@@ -346,6 +388,7 @@ function method_description(): array
             $rows = [];
             foreach (axis_inputs($axis, $scope) as $input) {
                 $input['available'] = in_array($input['metric'], $available, true);
+                $input['percentile_window_days'] = percentile_window_days((string) $input['metric']);
                 $rows[] = $input;
             }
             $axes["{$scope}.{$axis}"] = $rows;
@@ -356,6 +399,12 @@ function method_description(): array
         'method_version'          => METHOD_VERSION,
         'fixed_basis_days'        => FIXED_BASIS_DAYS,
         'percentile_window_days'  => PERCENTILE_WINDOW_DAYS,
+        // Per input, because the history available is per input: fear_greed carries 500
+        // backfilled days and nothing else has a past at all (D22). "The 82nd percentile"
+        // is not a complete statement without saying of what.
+        'percentile_window_note'  => 'Per input. ' . BACKFILLED_WINDOW_DAYS . ' days for fear_greed, '
+                                     . 'backfilled from /v3/fear-and-greed/historical; '
+                                     . PERCENTILE_WINDOW_DAYS . ' days for every input that can only be recorded.',
         'divergence_formula'      => 'money - voice',
         'axes'                    => $axes,
     ];

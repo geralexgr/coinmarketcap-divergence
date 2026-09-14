@@ -35,6 +35,7 @@ function latest_market_score(PDO $pdo, int $methodVersion): ?array
 {
     $stmt = $pdo->prepare(
         'SELECT sampled_at, voice, money, divergence, quadrant, basis,
+                voice_basis, money_basis,
                 method_version, voice_inputs, money_inputs, inputs_possible
            FROM scores
           WHERE scope = ? AND cmc_id = 0 AND method_version = ?
@@ -122,8 +123,16 @@ function market_series(PDO $pdo, int $methodVersion, string $window = '7d', int 
  *
  * @return array<int,array<string,mixed>>
  */
-function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap', ?string $quadrant = null, int $limit = 100, bool $includeStablecoins = false): array
-{
+function latest_asset_scores(
+    PDO $pdo,
+    int $methodVersion,
+    string $sort = 'gap',
+    ?string $quadrant = null,
+    int $limit = 100,
+    bool $includeStablecoins = false,
+    ?int $minRank = null,
+    ?int $maxRank = null
+): array {
     $order = match ($sort) {
         'voice'  => 's.voice DESC',
         'money'  => 's.money DESC',
@@ -150,6 +159,17 @@ function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap',
     if ($quadrant !== null) {
         $sql .= ' AND s.quadrant = :quadrant';
     }
+    // A rank band, because the discovery value is not evenly spread across the universe.
+    // The top twenty are known to anyone who would open this page, and a gap-ranked table
+    // over 200 assets spends its first screen on them. Excluding a band is a filter on
+    // what is shown and changes no score: each asset is still ranked against the whole
+    // recorded cross-section, not against the survivors of the filter.
+    if ($minRank !== null) {
+        $sql .= ' AND u.rank_last >= :min_rank';
+    }
+    if ($maxRank !== null) {
+        $sql .= ' AND u.rank_last <= :max_rank';
+    }
     $sql .= " ORDER BY {$order} LIMIT :limit";
 
     $stmt = $pdo->prepare($sql);
@@ -160,10 +180,147 @@ function latest_asset_scores(PDO $pdo, int $methodVersion, string $sort = 'gap',
     if ($quadrant !== null) {
         $stmt->bindValue(':quadrant', $quadrant);
     }
+    if ($minRank !== null) {
+        $stmt->bindValue(':min_rank', $minRank, PDO::PARAM_INT);
+    }
+    if ($maxRank !== null) {
+        $stmt->bindValue(':max_rank', $maxRank, PDO::PARAM_INT);
+    }
     $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
     $stmt->execute();
 
     return array_map('normalise_score_row', $stmt->fetchAll());
+}
+
+/**
+ * Assets whose gap moved the most, rather than whose gap is the largest.
+ *
+ * The `gap` sort answers "where is the market most divergent right now", and it answers
+ * it with the same names most days: an asset whose attention proxy always outruns its
+ * turnover sits at the top of that table permanently, which makes it a property of the
+ * asset rather than news about it. The first look is useful and the fiftieth is not.
+ *
+ * This asks the other question — **what moved** — by ranking each asset on the change in
+ * its divergence between the latest cross-section and the most recent one at or before
+ * `$hours` ago. An asset that has been at -60 all week scores zero here. One that went
+ * from -5 to -40 overnight is at the top, which is the thing a reader did not already
+ * know.
+ *
+ * Both ends of the comparison are recorded measurements and the row carries both, so
+ * the change is checkable rather than asserted. It remains a measurement of a past
+ * interval: nothing about a mover says where it goes next, and the copy around it says
+ * so.
+ *
+ * `$toleranceHours` is how far past `$hours` the baseline may sit before the whole
+ * comparison is abandoned. Every row is measured between the *same* two cross-sections,
+ * chosen once — an asset missing from the baseline (a poller gap, or an asset that
+ * joined the universe later) yields no row at all, rather than a change measured against
+ * whatever happened to be nearest, which would report a recording gap as market
+ * movement.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function asset_divergence_movers(
+    PDO $pdo,
+    int $methodVersion,
+    int $hours = 24,
+    int $limit = 12,
+    bool $includeStablecoins = false,
+    int $toleranceHours = 12
+): array {
+    $latest = $pdo->prepare('SELECT MAX(sampled_at) FROM scores WHERE scope = ? AND method_version = ?');
+    $latest->execute(['asset', $methodVersion]);
+    $now = $latest->fetchColumn();
+    if ($now === false || $now === null) {
+        return [];
+    }
+
+    $baselineAt = $pdo->prepare(
+        'SELECT MAX(sampled_at) FROM scores
+          WHERE scope = ? AND method_version = ?
+            AND sampled_at <= DATE_SUB(?, INTERVAL ? HOUR)
+            AND sampled_at >= DATE_SUB(?, INTERVAL ? HOUR)'
+    );
+    $baselineAt->execute(['asset', $methodVersion, $now, $hours, $now, $hours + $toleranceHours]);
+    $then = $baselineAt->fetchColumn();
+    if ($then === false || $then === null) {
+        return [];
+    }
+
+    $sql =
+        'SELECT n.cmc_id, u.symbol, u.name, u.rank_last, u.is_stablecoin,
+                n.voice, n.money, n.divergence, n.quadrant, n.basis, n.sampled_at,
+                n.voice_inputs, n.money_inputs, n.inputs_possible, n.method_version,
+                t.voice      AS voice_then,
+                t.money      AS money_then,
+                t.divergence AS divergence_then,
+                t.quadrant   AS quadrant_then,
+                t.sampled_at AS sampled_at_then,
+                (n.divergence - t.divergence) AS divergence_change
+           FROM scores n
+           JOIN scores t
+                  ON t.cmc_id         = n.cmc_id
+                 AND t.scope          = n.scope
+                 AND t.method_version = n.method_version
+                 AND t.sampled_at     = :then
+           JOIN asset_universe u ON u.cmc_id = n.cmc_id
+          WHERE n.scope = :scope
+            AND n.method_version = :version
+            AND n.sampled_at = :now';
+    if (!$includeStablecoins) {
+        $sql .= ' AND u.is_stablecoin = 0';
+    }
+    $sql .= ' ORDER BY ABS(n.divergence - t.divergence) DESC LIMIT :limit';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':scope', 'asset');
+    $stmt->bindValue(':version', $methodVersion, PDO::PARAM_INT);
+    $stmt->bindValue(':now', $now);
+    $stmt->bindValue(':then', $then);
+    $stmt->bindValue(':limit', max(1, min(200, $limit)), PDO::PARAM_INT);
+    $stmt->execute();
+
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $row = normalise_score_row($row);
+        foreach (['voice_then', 'money_then', 'divergence_then', 'divergence_change'] as $key) {
+            if (isset($row[$key])) {
+                $row[$key] = (float) $row[$key];
+            }
+        }
+        // Whether the move carried the asset across a midline — the one kind of move
+        // that renames the reading rather than only shifting it.
+        $row['crossed'] = ($row['quadrant_then'] ?? null) !== ($row['quadrant'] ?? null);
+        $rows[] = $row;
+    }
+
+    return $rows;
+}
+
+/**
+ * The assets that changed quadrant between those same two cross-sections.
+ *
+ * A subset of `asset_divergence_movers()` by construction, kept separate because it
+ * answers a sharper question: a crossing is the only move that changes what the asset is
+ * *called*, so it earns a heading of its own. Ordered by how far the gap travelled, so a
+ * decisive crossing outranks one that inched over the line.
+ *
+ * Filtered in PHP rather than SQL so that "crossed" has exactly one definition, the one
+ * above. The query planner would have to walk the whole cross-section either way.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function asset_quadrant_crossings(
+    PDO $pdo,
+    int $methodVersion,
+    int $hours = 24,
+    int $limit = 12,
+    bool $includeStablecoins = false
+): array {
+    $movers = asset_divergence_movers($pdo, $methodVersion, $hours, 200, $includeStablecoins);
+    $crossed = array_values(array_filter($movers, static fn(array $r): bool => $r['crossed'] === true));
+
+    return array_slice($crossed, 0, max(1, $limit));
 }
 
 /**

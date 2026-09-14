@@ -52,12 +52,19 @@ them, because the two halves are never plotted against each other.
 
 ### Why nobody can just build this later
 
-Price history can be fetched retroactively, forever. **Sentiment and positioning history cannot.**
+Price history can be fetched retroactively, forever. **Positioning history cannot.**
 
-There is no CoinMarketCap endpoint that answers "what was the fear and greed index, and what was
-open interest, at 3pm last Tuesday". Those endpoints return *now*, and only now. So the gap between
-the two can be measured today, but its history can only exist if something was writing it down at
-the time.
+There is no CoinMarketCap endpoint that answers "what was open interest, or the funding rate, or
+liquidations, or exchange reserve, at 3pm last Tuesday". Those endpoints return *now*, and only now.
+
+Sentiment is the one exception, and it is worth being exact about rather than glossing:
+`/v3/fear-and-greed/historical` returns 500 daily readings for a single credit, and this project
+fetches it once ([D22](docs/decisions.md)). So the Voice axis has a past that anyone can obtain. The
+Money axis does not, at all.
+
+**That is the sharper claim, and it is the one that matters:** the gap between the two can be
+measured today, but a *history* of the gap can only exist if something was writing down the Money
+half at the time.
 
 That is why this project is a recorder first and a website second. The poller shipped before a
 single line of frontend, and every hour it runs is an hour of history that nobody starting later can
@@ -98,10 +105,10 @@ It is a **measuring instrument, not an advisor**. It will never tell you what to
 
 | | |
 |---|---|
-| **It records.** | CoinMarketCap has no historical endpoint for sentiment or positioning. Price history can be fetched retroactively; this cannot. Every point on the trail exists only because something was recording at the time, and it compounds daily. |
+| **It records.** | CoinMarketCap publishes no historical endpoint for open interest, funding, liquidations, turnover or exchange flow. Price history can be fetched retroactively; the Money axis cannot, at all. (Sentiment can — 500 days of it, and this project fetches it: [D22](docs/decisions.md).) Every point of the Money half of the trail exists only because something was recording at the time, and it compounds daily. |
 | **The method is data, not prose.** | `app/scoring/inputs.php` declares every input, weight and range. The scorer runs from it and the public method page renders from it, so the page *cannot* describe a method the code does not implement. |
 | **It measures, never predicts.** | No signals, no entry levels, no buy/sell. A measurement can be checked against CoinMarketCap in thirty seconds; a prediction cannot be checked at all. There is a test that greps the generated copy for future-tense words. |
-| **The mistakes are in the repo.** | 21 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
+| **The mistakes are in the repo.** | 23 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
 | **Missing inputs are dropped, not zeroed.** | Ten of the twenty endpoints in the catalogue are 403 on this key. Scores record how many inputs they actually used, and the app prints it. A zero would read as a quiet market; absence is a measurement of nothing. |
 
 ---
@@ -277,12 +284,18 @@ Detail: [`docs/architecture.md`](docs/architecture.md) · Tables: [`docs/data-mo
 ### Why the recorder is the whole product
 
 CoinMarketCap's API is almost entirely **snapshot data**. Price history can be fetched
-retroactively; **positioning and sentiment history cannot**. There is no historical endpoint for
-turnover, exchange flow or social volume at usable granularity, and none at all for some of it.
+retroactively; **positioning history cannot**. There is no historical endpoint for open interest,
+funding rate, liquidations, turnover or exchange flow at any granularity.
+
+Sentiment is the single exception and the honest version of this section names it:
+`/v3/fear-and-greed/historical` hands over 500 daily readings for one credit, which this project
+takes ([D22](docs/decisions.md)). The Voice axis therefore has a past that anyone could obtain. The
+Money axis has only what was recorded.
 
 So the trail on the plot, every "up 26 this week" figure, and every quadrant transition exist only
-because something was recording at the time. Whoever starts recording on day one owns a dataset
-nobody starting later can reconstruct.
+because something was recording the Money half at the time. Whoever starts recording on day one owns
+a dataset nobody starting later can reconstruct — and knowing exactly which half that is makes the
+claim checkable rather than sweeping.
 
 ### Why raw payloads are stored verbatim
 
@@ -321,6 +334,10 @@ mysql -u USER -p DB < docs/schema.sql
 
 # 6. One sample, verbose, nothing hidden.
 php app/poller/run.php --once
+
+# 6b. Backfill the Voice axis: 500 days of the fear and greed index, one credit,
+#     once and never on a cron. The only history CoinMarketCap will sell you (D22).
+php app/bin/backfill-fng.php
 
 # 7. Read stored payloads into typed rows. No credits, no network.
 php app/bin/extract.php --verbose
@@ -365,14 +382,21 @@ cannot reach.
 | Axis | Endpoint | Used for | Credits |
 |---|---|---|---|
 | Voice | `/v3/fear-and-greed/latest` | market-wide sentiment level | 1 |
+| Voice | `/v3/fear-and-greed/historical` | **500 days of index history** — fetched once, not on a cron ([D22](docs/decisions.md)) | 1, once |
 | **Money** | `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | **open interest, funding rate, basis** | 1 |
-| **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations** — 100 assets per credit | 1 |
+| **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations** — 200 assets per credit | 1 |
 | **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest | 1 |
 | Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share of activity | 1 |
 | Money | `/v1/exchange/assets` | exchange reserve level, and its movement | 1 |
-| Money | `/v2/cryptocurrency/quotes/latest` | per-asset turnover | 1 |
-| Both | `/v1/cryptocurrency/listings/latest` | the asset universe and its per-asset inputs | 1 |
+| Both | `/v1/cryptocurrency/listings/latest` | the asset universe **and every callable per-asset input**, `limit=200` | 1 |
 | Ops | `/v1/key/info` | credit budget and rate limit, at no credit cost | 0 |
+
+`/v2/cryptocurrency/quotes/latest` used to be on this list and is not any more. It is callable, and
+it returns exactly the per-asset metrics `listings/latest` already returns in the same run — into
+rows the per-asset scorer never read, because it anchors its cross-sections on `listings/latest`
+alone. It cost about a tenth of the monthly budget for a duplicate of data already on disk. Retiring
+it paid for doubling the tracked universe to 200 assets, which cost nothing anyway: CMC prices
+`listings/latest` per 200 data points returned. See [D23](docs/decisions.md).
 
 A further ten paths were probed and are **forbidden on this key** — every trending, community and
 content endpoint, plus spot exchange listings and the v2 market-pairs endpoint. They are not listed
@@ -473,11 +497,11 @@ divergence/
 │   ├── lib/                 config, http client, db writers, endpoint catalogue, queries
 │   ├── scoring/             the method as data, normalisation, and the recompute pass
 │   ├── mcp/server.php       MCP server over the same queries
-│   └── bin/                 probe-paths · verify-endpoints · preflight · extract · score · health
+│   └── bin/                 probe-paths · verify-endpoints · preflight · extract · score · health · backfill-fng
 │
 ├── public/                ← the document root, and the ONLY web-served directory
 │
-├── tests/                 72 tests, no framework, no network, no database
+├── tests/                 82 tests, no framework, no network, no database
 └── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
 

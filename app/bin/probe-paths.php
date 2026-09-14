@@ -149,6 +149,41 @@ function candidate_paths(): array
         }
     }
 
+    // The same sweep for the Voice family, for the same reason.
+    //
+    // D20's correction was applied to the family that had been missed and to nothing
+    // else — the derivatives shapes above run v1 to v6 while every attention endpoint
+    // was still probed at /v1/ only. That is the identical asymmetry, sitting on the
+    // axis that is currently one input wide.
+    //
+    // These seven read as 403 rather than 404, so the paths exist and the plan refuses
+    // them; a /v5/ sibling is a different path and carries no promise of being refused
+    // too. The probe is free — invalid key, no credits — so "we assume not" costs
+    // nothing to turn into "we checked".
+    $voiceShapes = [];
+    foreach (['v1', 'v2', 'v3', 'v4', 'v5', 'v6'] as $version) {
+        foreach ([
+            'community/trending/topic',
+            'community/trending/token',
+            'cryptocurrency/trending/most-visited',
+            'cryptocurrency/trending/latest',
+            'cryptocurrency/trending/gainers-losers',
+            'content/latest',
+            'content/posts/top',
+            // Confirmed present and callable, swept anyway so a move is visible as a
+            // move rather than as the Voice axis quietly going empty.
+            'fear-and-greed/latest',
+            'fear-and-greed/historical',
+            // Attention-shaped neighbours not in the catalogue at all. Their absence
+            // from a list is exactly how v5 was missed the first time.
+            'community/comments',
+            'cryptocurrency/social-stats/latest',
+            'social/volume/latest',
+        ] as $shape) {
+            $voiceShapes[] = "/{$version}/{$shape}";
+        }
+    }
+
     $other = [
         '/v1/cryptocurrency/derivatives/latest',
         '/v1/exchange/derivatives/latest',
@@ -166,5 +201,5 @@ function candidate_paths(): array
         '/v2/tools/price-conversion',
     ];
 
-    return array_values(array_unique(array_merge($paths, $derivativeShapes, $other)));
+    return array_values(array_unique(array_merge($paths, $derivativeShapes, $voiceShapes, $other)));
 }

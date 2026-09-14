@@ -383,3 +383,71 @@ test('a stablecoin is identified from its own tags, not a hard-coded list', func
     assert_same(false, $flags['BTC'], 'bitcoin is not');
     assert_same(false, $flags['NOTAGS'], 'and a listing with no tags at all does not crash');
 });
+
+// ---------------------------------------------------------------------------
+// Fear and greed history — the one input with a past, backfilled (D22)
+// ---------------------------------------------------------------------------
+
+test('the fear and greed history dates every reading from the payload, not the fetch', function (): void {
+    // The whole point of the backfill. If these rows took the fetch time, five hundred
+    // days of sentiment would stack onto the afternoon the script ran and the percentile
+    // basis would be ranking a value against 500 copies of the same moment.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => [
+        ['timestamp' => '1789257600', 'value' => 71, 'value_classification' => 'Greed'],
+        ['timestamp' => '1789171200', 'value' => 64, 'value_classification' => 'Greed'],
+        ['timestamp' => '1789084800', 'value' => 30, 'value_classification' => 'Fear'],
+    ]]);
+
+    $r = extract_sample('fear_and_greed_historical', $body);
+
+    assert_same('ok', $r['status'], 'a well-formed history payload parses');
+    assert_same(3, count($r['market']), 'one row per dated reading, not one row for the newest');
+
+    $byDate = [];
+    foreach ($r['market'] as $row) {
+        assert_same('fear_greed', $row['metric'], 'history writes the same metric as the live endpoint');
+        assert_true(isset($row['sampled_at']), 'every history row carries its own sample time');
+        $byDate[substr((string) $row['sampled_at'], 0, 10)] = $row['value'];
+    }
+
+    assert_close(71.0, $byDate['2026-09-13'], 'the newest reading lands on its own date');
+    assert_close(30.0, $byDate['2026-09-11'], 'and so does the oldest');
+});
+
+test('a history timestamp is read whether it arrives as seconds, milliseconds or a string', function (): void {
+    // CMC has returned all three shapes across different endpoints. Assuming the one it
+    // sent on the day this was written is how a silent parsing failure gets shipped, and
+    // this file has done that before.
+    assert_same('2026-09-13 00:00:00.000', fng_point_timestamp(['timestamp' => '1789257600']), 'unix seconds');
+    assert_same('2026-09-13 00:00:00.000', fng_point_timestamp(['timestamp' => 1789257600]), 'seconds as an int');
+    assert_same('2026-09-13 00:00:00.000', fng_point_timestamp(['timestamp' => 1789257600000]), 'unix milliseconds');
+    assert_same('2026-09-13 00:00:00.000', fng_point_timestamp(['timestamp' => '2026-09-13T00:00:00Z']), 'an ISO 8601 string');
+    assert_same(null, fng_point_timestamp(['value' => 50]), 'no timestamp field at all');
+    assert_same(null, fng_point_timestamp(['timestamp' => 'not a date']), 'an unparseable string');
+    assert_same(null, fng_point_timestamp(['timestamp' => 0]), 'the epoch is not a plausible reading');
+});
+
+test('unreadable history points are skipped without discarding the ones that parsed', function (): void {
+    // A 500-point response with three bad rows is still 497 days of history. Throwing
+    // the payload away over them would be a worse answer than the one available.
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => [
+        ['timestamp' => '1789257600', 'value' => 71],
+        ['timestamp' => '1789171200'],                      // no value
+        ['value' => 40],                                    // no timestamp
+        ['timestamp' => '1789084800', 'value' => 30],
+    ]]);
+
+    $r = extract_sample('fear_and_greed_historical', $body);
+
+    assert_same('ok', $r['status'], 'the good rows still land');
+    assert_same(2, count($r['market']), 'and only the good rows');
+    assert_true(str_contains((string) $r['note'], '2 of 4'), 'the skipped count is recorded, not swallowed');
+});
+
+test('an empty fear and greed history is skipped with a reason rather than scored', function (): void {
+    $body = json_encode(['status' => ['error_code' => '0'], 'data' => []]);
+    $r = extract_sample('fear_and_greed_historical', $body);
+
+    assert_same('skipped', $r['status'], 'no points is not a measurement of anything');
+    assert_same(0, count($r['market']), 'and writes nothing');
+});
