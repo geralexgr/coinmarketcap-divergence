@@ -36,8 +36,11 @@ declare(strict_types=1);
  *     pairs endpoint, and long/short liquidations. These are the inputs the Money axis
  *     was designed around and that D10 wrongly recorded as non-existent; see D20.
  * 4 — the stablecoin tag, so the screener can stop ranking artefacts above findings.
+ * 5 — the fear-and-greed history. The one endpoint in the catalogue with real history
+ *     behind it, declared since day one and never called; 500 dated readings out of a
+ *     single payload, each carrying its own sampled_at. See D22.
  */
-const EXTRACTOR_VERSION = 4;
+const EXTRACTOR_VERSION = 5;
 
 /**
  * @return array{
@@ -98,6 +101,7 @@ function extractor_for(string $endpoint): ?callable
         'listings_latest'          => 'extract_listings_latest',
         'quotes_latest'            => 'extract_quotes_latest',
         'fear_and_greed'           => 'extract_fear_and_greed',
+        'fear_and_greed_historical' => 'extract_fear_and_greed_historical',
         'exchange_listings'        => 'extract_exchange_listings',
         'exchange_assets'          => 'extract_exchange_assets',
         'derivatives_pairs'        => 'extract_derivatives_pairs',
@@ -588,6 +592,109 @@ function extract_fear_and_greed(mixed $data): array
     }
 
     return ['market' => [['metric' => 'fear_greed', 'value' => (float) $point['value']]]];
+}
+
+/**
+ * The fear-and-greed index as a dated series — the one input on either axis with real
+ * history behind it.
+ *
+ * Everything else this product measures is a snapshot. CoinMarketCap publishes no
+ * historical endpoint for turnover, open interest, liquidations or exchange reserve, so
+ * every one of those points exists only because the recorder was running. Sentiment is
+ * the exception: `/v3/fear-and-greed/historical` returns 500 daily readings for one
+ * credit, and it has been sitting in the endpoint catalogue marked callable, and unused,
+ * since the first commit.
+ *
+ * That asymmetry is worth stating rather than smoothing over: **Voice can be backfilled
+ * 500 days and Money cannot be backfilled at all.** It makes the recorder argument
+ * narrower and more accurate at the same time — the irreplaceable half of this dataset
+ * is the Money axis.
+ *
+ * Every row is dated from the payload, not from the moment the backfill ran. Rule 2 of
+ * this file still holds: this is one payload in, and no other sample is consulted.
+ *
+ * The index is a daily reading, so the timestamps land one per day and the scoring
+ * layer's 26-hour staleness rule for `fear_greed` reads each one as current for the day
+ * it belongs to — exactly as it already does for the live endpoint.
+ */
+function extract_fear_and_greed_historical(mixed $data): array
+{
+    if (!is_array($data) || $data === []) {
+        return ['status' => 'skipped', 'note' => 'the fear-and-greed history payload carried no points'];
+    }
+
+    $market = [];
+    $malformed = 0;
+
+    foreach ($data as $entry) {
+        if (!is_array($entry) || !is_numeric($entry['value'] ?? null)) {
+            $malformed++;
+            continue;
+        }
+
+        $at = fng_point_timestamp($entry);
+        if ($at === null) {
+            $malformed++;
+            continue;
+        }
+
+        $market[] = [
+            'metric'     => 'fear_greed',
+            'value'      => (float) $entry['value'],
+            'sampled_at' => $at,
+        ];
+    }
+
+    if ($market === []) {
+        return ['status' => 'skipped', 'note' => 'no dated numeric readings in the fear-and-greed history payload'];
+    }
+
+    // A handful of unreadable points in a 500-point response is worth recording without
+    // throwing away the 490 that parsed. The whole payload failing is a different
+    // condition and is handled above.
+    return [
+        'market' => $market,
+        'note'   => $malformed > 0
+            ? sprintf('%d of %d history points were unreadable and skipped', $malformed, count($data))
+            : null,
+    ];
+}
+
+/**
+ * One history point's timestamp as a UTC `DATETIME(3)` string, or null if it has none.
+ *
+ * CoinMarketCap has returned this field as unix seconds, unix milliseconds and an ISO
+ * 8601 string across different endpoints, so all three are accepted rather than
+ * assuming the one this endpoint happened to send on the day it was first read. The
+ * millisecond case is separated by magnitude: a seconds value for any plausible date is
+ * ten digits, a milliseconds value is thirteen.
+ */
+function fng_point_timestamp(array $entry): ?string
+{
+    $raw = $entry['timestamp'] ?? $entry['update_time'] ?? null;
+    if ($raw === null) {
+        return null;
+    }
+
+    if (is_numeric($raw)) {
+        $n = (float) $raw;
+        if ($n <= 0) {
+            return null;
+        }
+        // Anything past 1e12 is milliseconds: that is the year 33658 read as seconds.
+        $seconds = $n > 1e12 ? $n / 1000.0 : $n;
+
+        return gmdate('Y-m-d H:i:s', (int) $seconds) . '.000';
+    }
+
+    if (is_string($raw)) {
+        $parsed = strtotime($raw);
+        if ($parsed !== false) {
+            return gmdate('Y-m-d H:i:s', $parsed) . '.000';
+        }
+    }
+
+    return null;
 }
 
 /**

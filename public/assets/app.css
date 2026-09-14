@@ -112,6 +112,10 @@ code, .mono {
 .readout { display: flex; flex-direction: column; gap: 18px; border-left: 1px solid var(--hair-soft); padding-left: 24px; }
 .bigcap { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .bignum { font-size: 52px; font-weight: 300; letter-spacing: -.04em; line-height: .9; color: var(--money); }
+/* Signed, and coloured by which axis is in front — the same convention as the screener's
+   gap column, so the two read the same way. */
+.bignum.m { color: var(--money); }
+.bignum.v { color: var(--voice); }
 .bignum small { font-size: 16px; color: var(--graphite); font-weight: 400; letter-spacing: 0; }
 .bignote { font-size: 12.5px; color: var(--graphite); margin: 10px 0 0; line-height: 1.45; }
 .provenance { font-size: 11.5px; color: var(--graphite); margin: 8px 0 0; }
@@ -162,6 +166,11 @@ td.muted { color: var(--graphite); }
 .quad-tag { font-size: 12px; color: var(--graphite); }
 
 .tfoot { font-size: 12px; color: var(--graphite); margin-top: 14px; max-width: 72ch; }
+
+/* Rank band picker, and the second heading inside the "what changed" section. */
+.bandrow { align-items: baseline; margin: 0 0 14px; }
+.bandcap { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--graphite); }
+.subhead { font-size: 14px; font-weight: 600; margin: 26px 0 6px; }
 
 /* ---------- asset detail ---------- */
 

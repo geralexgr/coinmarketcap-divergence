@@ -132,8 +132,8 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 1-59/15 * * * *  php /home/USER/divergence/app/poller/run.php --market >> /home/USER/divergence/logs/cron.log 2>&1
 11-59/15 * * * * php /home/USER/divergence/app/poller/run.php --assets >> /home/USER/divergence/logs/cron.log 2>&1
-7,27,47 * * * *  php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
-12,42 * * * *    php /home/USER/divergence/app/bin/score.php --quiet --limit=500 >> /home/USER/divergence/logs/cron.log 2>&1
+6-59/15 * * * *  php /home/USER/divergence/app/bin/extract.php --quiet --limit=2000 >> /home/USER/divergence/logs/cron.log 2>&1
+9-59/15 * * * *  php /home/USER/divergence/app/bin/score.php --quiet --limit=500 >> /home/USER/divergence/logs/cron.log 2>&1
 CRON
 
 crontab ~/divergence-crontab.txt && crontab -l
@@ -160,7 +160,16 @@ Use whatever `which php` printed in step 6.
 
 **The cadence is not set here.** Each endpoint carries its own interval in `app/lib/endpoints.php`;
 these entries are just a cheap tick that decides what is due. Most ticks fetch nothing and cost
-nothing. 404 credits a day against a 15,000/month plan.
+nothing. 356 credits a day against a 15,000/month plan — see the arithmetic in D23.
+
+**Why all four run every fifteen minutes.** Extraction and scoring used to run three and two times
+an hour against a poller sampling four times an hour, which meant the front page could show a score
+up to half an hour old while fresher samples sat unread in the database. Neither job costs a credit
+or makes a network call — they are pure derivations from what is already on disk — so there was
+never a budget reason for them to run slower than the thing they derive from. The offsets keep the
+original ordering: poll at :01 and :11, extract at :06, score at :09, each far enough behind the one
+it depends on that a slow run cannot overtake it, and none of them able to delay a fetch. That
+separation is the rule the whole schedule exists to protect.
 
 **Your host may rewrite these.** Ours enforces a 15-minute minimum and silently rewrote `*/5` to
 `*/15` with a per-job offset. That is fine — with per-endpoint cadence a slower tick still delivers

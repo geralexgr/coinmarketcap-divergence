@@ -32,8 +32,32 @@ describe the number wrongly.
 ### `screen_assets`
 The per-asset table as data.
 
-Params: `sort` (`gap` | `voice` | `money` | `symbol` | `rank`), `quadrant` (optional filter), `limit`
+Params: `sort` (`gap` | `voice` | `money` | `symbol` | `rank`), `quadrant` (optional filter),
+`band` (`all` | `top50` | `mid` | `deep` — a rank band by market cap), `limit`
 Returns: rows of `{ cmc_id, symbol, name, rank_last, voice, money, divergence, quadrant, sampled_at }`
+
+Sorting by `gap` returns much the same assets every day: an attention proxy that permanently
+outruns turnover is a property of the asset, not news about it. Use `find_movers` for what changed.
+The band filters which rows come back and changes no score — every asset is still ranked against
+the whole cross-section.
+
+### `find_movers`
+The assets whose gap **moved** most between two recorded cross-sections, rather than the assets
+whose gap is largest.
+
+Params: `hours` (how far back the baseline is taken from, default 24), `only_crossings` (restrict to
+assets that changed quadrant), `limit`
+Returns: rows of `{ cmc_id, symbol, name, rank_last, voice, money, divergence, quadrant,
+voice_then, money_then, divergence_then, quadrant_then, divergence_change, crossed, sampled_at,
+sampled_at_then }`, alongside the `from` and `to` sample times.
+
+Both ends of every comparison are carried on the row, so the change is checkable rather than
+asserted, and every asset is measured between the *same* two cross-sections. An asset missing from
+the baseline yields no row rather than a change measured against whatever was nearest — which would
+report a recording gap as market movement. An empty result means no cross-section that old was
+recorded, not that nothing moved.
+
+A measurement of a past interval. It says nothing about the next one.
 
 ### `get_divergence_history`
 The trail, as a series.

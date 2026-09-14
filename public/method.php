@@ -24,6 +24,11 @@ $method = method_description();
 $access = endpoint_access_results();
 $activity = $pdo !== null ? endpoint_activity($pdo) : [];
 
+// The most recent market score, read only so this page can report which basis each
+// axis is actually on rather than describing the rule and leaving the reader to guess
+// which side of it today falls.
+$current = $pdo !== null ? latest_market_score($pdo, METHOD_VERSION) : null;
+
 $switchover = null;
 if ($pdo !== null && $health['first_sample'] !== null) {
     $switchover = gmdate('j F Y, H:i', (int) strtotime($health['first_sample'] . ' UTC') + FIXED_BASIS_DAYS * 86400);
@@ -177,14 +182,44 @@ $axisTitles = [
     quietly mix them.
   </p>
 
-  <h3>Market-wide: fixed ranges for the first <?= FIXED_BASIS_DAYS ?> days, then percentile rank</h3>
+  <h3>Market-wide: fixed ranges until an axis has <?= FIXED_BASIS_DAYS ?> days behind it, then percentile rank</h3>
   <p>
     Percentile rank against trailing history is meaningless when there is no history — the first
     day's scores would be ranked against a handful of samples and the plot would jump between 0 and
     100 for no reason. So each input is min-max scaled against the hand-set reference range in the
-    tables above until <?= FIXED_BASIS_DAYS ?> days of recording exist, and after that against its
-    percentile rank within a trailing <?= PERCENTILE_WINDOW_DAYS ?>-day window (or all of recorded
-    history, whichever is shorter — during this deployment it is the latter).
+    tables above until <?= FIXED_BASIS_DAYS ?> days of history exist, and after that against its
+    percentile rank within a trailing window of its own history (or all the history there is,
+    whichever is shorter).
+  </p>
+  <p>
+    <b>The window is per input, because the history available is per input.</b> The fear and greed
+    index is ranked against <b><?= BACKFILLED_WINDOW_DAYS ?> days</b> — what
+    <span class="mono">/v3/fear-and-greed/historical</span> returns, and what was backfilled. Every
+    other input is ranked against <b><?= PERCENTILE_WINDOW_DAYS ?> days</b>, which for this
+    deployment means all of them, because nothing else has a past. Ranking the backfilled input
+    against <?= PERCENTILE_WINDOW_DAYS ?> days would use a fraction of the history fetched and give a
+    once-daily input a percentile resolution of <?= round(100 / PERCENTILE_WINDOW_DAYS, 1) ?> points.
+  </p>
+  <p>
+    <b>The switchover happens per axis, and the two axes do not reach it together.</b>
+    CoinMarketCap publishes a historical endpoint for the fear and greed index and for nothing else
+    this product measures, so the Voice axis was backfilled with
+    <span class="mono">/v3/fear-and-greed/historical</span> and reached percentile rank immediately,
+    while every Money input has only what this deployment recorded — because there is no way to
+    obtain any more of it. Each row therefore stores the basis of each axis separately, and the
+    row's summary <span class="mono">basis</span> reports the weaker of the two, so a
+    half-established row is never advertised as fully established.
+  </p>
+  <?php if ($current !== null && isset($current['voice_basis'], $current['money_basis'])): ?>
+    <p class="stat">
+      The most recent score used <b><?= h((string) $current['voice_basis']) ?></b> for Voice and
+      <b><?= h((string) $current['money_basis']) ?></b> for Money.
+    </p>
+  <?php endif; ?>
+  <p>
+    That asymmetry is the argument for the recorder, stated more precisely than "none of this can be
+    fetched later": <b>Voice can be backfilled 500 days and Money cannot be backfilled at all.</b>
+    The irreplaceable half of this dataset is the Money axis.
   </p>
   <?php if ($switchover !== null): ?>
     <p class="stat">
@@ -198,7 +233,7 @@ $axisTitles = [
   <p>
     Per-asset scores use a third basis, recorded as <span class="mono">cross_section</span>. Each
     asset's inputs are ranked against <b>the rest of the tracked universe at the same instant</b>
-    rather than against that asset's own history: turnover in the 92nd percentile of the top 100
+    rather than against that asset's own history: turnover in the 92nd percentile of the top 200
     right now. That is the question a screener is actually asked, and it needs no banked history, so
     the table works from the first sample. It is a different measurement from the market chart and
     the two are never plotted together.

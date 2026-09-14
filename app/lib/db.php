@@ -177,30 +177,58 @@ function derived_schema_is_present(PDO $pdo): bool
 }
 
 /**
- * @param array<int,array{metric:string,value:float}> $metrics
+ * A metric row may carry its own `sampled_at`, overriding the payload's fetch time.
+ *
+ * Almost every payload is a snapshot, and for those the fetch time *is* the sample time
+ * — which is why it is a single argument rather than a per-row field. The exception is a
+ * historical response: `/v3/fear-and-greed/historical` returns 500 dated readings in one
+ * body, and writing all of them at the moment the backfill ran would stack five hundred
+ * years of sentiment onto one afternoon.
+ *
+ * So the rule is: the extractor may date a row, and if it does not, the fetch time
+ * stands. Nothing about the snapshot path changes.
+ *
+ * Chunked for the same reason `insert_asset_metrics` is: a historical payload is 500
+ * rows in one call and shared hosts set `max_allowed_packet` low.
+ *
+ * @param array<int,array{metric:string,value:float,sampled_at?:string}> $metrics
  * @return int rows written
  */
-function insert_market_metrics(PDO $pdo, int $rawSampleId, string $endpoint, string $sampledAt, array $metrics): int
+function insert_market_metrics(PDO $pdo, int $rawSampleId, string $endpoint, string $sampledAt, array $metrics, int $chunk = 200): int
 {
     if ($metrics === []) {
         return 0;
     }
 
-    $placeholders = [];
-    $values = [];
-    foreach ($metrics as $row) {
-        $placeholders[] = '(?, ?, ?, ?, ?)';
-        array_push($values, $rawSampleId, $endpoint, $row['metric'], $row['value'], $sampledAt);
+    $written = 0;
+
+    foreach (array_chunk($metrics, max(1, $chunk)) as $batch) {
+        $placeholders = [];
+        $values = [];
+        foreach ($batch as $row) {
+            $placeholders[] = '(?, ?, ?, ?, ?)';
+            array_push(
+                $values,
+                $rawSampleId,
+                $endpoint,
+                $row['metric'],
+                $row['value'],
+                // Dated by the extractor when the payload said when; the fetch time
+                // otherwise. See the note above.
+                $row['sampled_at'] ?? $sampledAt
+            );
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO market_metric (raw_sample_id, endpoint, metric, value, sampled_at) VALUES '
+            . implode(', ', $placeholders)
+            . ' ON DUPLICATE KEY UPDATE value = VALUES(value), endpoint = VALUES(endpoint)'
+        );
+        $stmt->execute($values);
+        $written += count($batch);
     }
 
-    $stmt = $pdo->prepare(
-        'INSERT INTO market_metric (raw_sample_id, endpoint, metric, value, sampled_at) VALUES '
-        . implode(', ', $placeholders)
-        . ' ON DUPLICATE KEY UPDATE value = VALUES(value), endpoint = VALUES(endpoint), sampled_at = VALUES(sampled_at)'
-    );
-    $stmt->execute($values);
-
-    return count($metrics);
+    return $written;
 }
 
 /**

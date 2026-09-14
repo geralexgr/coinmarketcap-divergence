@@ -48,6 +48,12 @@ $moneyInputs = current_input_values($pdo, available_inputs('money', 'market'), $
 // Stablecoins excluded, same as the screener's default — see D21.
 $assets = latest_asset_scores($pdo, METHOD_VERSION, 'gap', null, 12, false);
 
+// The movement half of the screener. The gap sort finds the most divergent assets and
+// finds much the same ones daily; this finds the ones that moved, which is what a reader
+// returning to the page does not already have. Six here, all of them one click away on
+// the full screener. See asset_divergence_movers().
+$movers = asset_divergence_movers($pdo, METHOD_VERSION, 24, 6, false);
+
 $windowLabel = ['24h' => 'last 24 hours', '7d' => 'last 7 days', '30d' => 'last 30 days', 'all' => 'all recorded history'][$window];
 
 /** The week-over-week change, or null when there is not a week of history to compare with. */
@@ -107,7 +113,9 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
   <aside class="readout">
     <div>
       <div class="bigcap">Divergence</div>
-      <div class="bignum"><?= h(fmt_score(abs($current['divergence']))) ?><small> of 100</small></div>
+      <?php // Signed, because the sign is the measurement: money - voice. An unsigned
+            // number reads identically whether narrative or money is the half in front. ?>
+      <div class="bignum <?= $current['divergence'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($current['divergence'])) ?><small> on &minus;100&hairsp;&hellip;&hairsp;+100</small></div>
       <p class="bignote"><?= h(divergence_sentence($current['divergence'])) ?></p>
       <p class="provenance">
         <?= h(quadrant_label($current['quadrant'])) ?> · sampled <?= h(fmt_time($current['sampled_at'])) ?>
@@ -179,6 +187,49 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
     <?= h(fmt_time($assets[0]['sampled_at'])) ?>. Nothing on this screen predicts anything.
   </p>
 </section>
+
+<?php if ($movers !== []): ?>
+<section class="tablewrap">
+  <div class="plothead">
+    <h2>What moved in the last 24 hours</h2>
+    <div class="windows"><a href="assets.php#changed">All movers &rarr;</a></div>
+  </div>
+  <p class="plotsub">
+    The table above ranks assets by how large their gap is, which is largely the same list
+    every day. This ranks them by how much the gap <em>changed</em>, between two
+    cross-sections that were both recorded —
+    <?= h(fmt_time($movers[0]['sampled_at_then'])) ?> and
+    <?= h(fmt_time($movers[0]['sampled_at'])) ?>.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Asset</th><th>Gap then</th><th>Gap now</th><th>Change</th><th class="reading">Reading</th></tr>
+    </thead>
+    <tbody>
+      <?php foreach ($movers as $mover): ?>
+      <tr>
+        <td class="tick"><a href="assets.php?asset=<?= (int) $mover['cmc_id'] ?>"><?= h($mover['symbol']) ?></a>
+            <em><?= h($mover['name']) ?></em></td>
+        <td class="muted"><?= h(fmt_signed($mover['divergence_then'])) ?></td>
+        <td class="gap <?= $mover['divergence'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($mover['divergence'])) ?></td>
+        <td class="gap <?= $mover['divergence_change'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($mover['divergence_change'])) ?></td>
+        <td class="quad-tag reading">
+          <?php if ($mover['crossed']): ?>
+            <?= h(quadrant_label((string) $mover['quadrant_then'])) ?> &rarr; <?= h(quadrant_label((string) $mover['quadrant'])) ?>
+          <?php else: ?>
+            <?= h(quadrant_label((string) $mover['quadrant'])) ?> throughout
+          <?php endif; ?>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="tfoot">
+    A change is the difference between two recorded measurements. It describes what the gap
+    did between those two moments, and nothing about what it does next.
+  </p>
+</section>
+<?php endif; ?>
 <?php endif; ?>
 
 <?php

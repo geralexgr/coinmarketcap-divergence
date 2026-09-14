@@ -51,14 +51,20 @@ topics. On the Basic plan **only fear and greed is callable**; trending, communi
 answer 403. So the axis is one input at daily resolution. Do not describe Voice as a ten-minute
 measurement while that is true — the app says "steps daily" on the chart and so should you.
 
-**Money** — how much money is actually moving. Turnover, derivative share of activity, stablecoin
-share, exchange reserve movement.
+That one input now carries 500 days of its own history, backfilled once from
+`/v3/fear-and-greed/historical` (D22), so Voice is scored as a percentile rank against its own
+distribution rather than as the raw index restated. **The Voice axis is the only thing in this
+product that can be backfilled at all.**
 
-Originally designed around funding rates, open interest and liquidations. **Those do not exist on
-the CoinMarketCap API** — 38 paths probed, all absent (D10). The substitute measures money *moving*
-and money *at rest*, not money *committed and leveraged*, and the method page says so in those words.
-`global-metrics` does carry `derivatives_volume_24h`, which is the one genuinely positioning-shaped
-number reachable, and it is on the axis.
+**Money** — how much money is actually committed and at risk. Open interest, funding rate,
+liquidations, open interest against volume, and turnover.
+
+D10 recorded that the derivatives endpoints did not exist, after probing 38 paths. **That was
+wrong** — they live under `/v5/`, and the original sweep covered `/v1/`–`/v4/` only. D20 is the
+correction and `METHOD_VERSION` 2 is the axis rebuilt on them. The turnover-and-substitutes version
+of the axis is kept at weight zero rather than deleted, so what the axis used to be stays legible.
+If you read a claim in this repo that something is absent from the API, check which versions were
+swept before repeating it.
 
 **Divergence** — `money − voice`, signed.
 
@@ -119,6 +125,17 @@ many inputs it saw. A zero reads as a quiet market; absence is a measurement of 
 endpoints are forbidden, and when the normalisation basis changed. This is what separates the tool
 from a black box.
 
+**The normalisation basis is per axis (D22).** Voice reaches percentile rank immediately because its
+one input was backfilled 500 days; Money cannot until the recorder has run a week, because none of
+its inputs can be backfilled at all. `scores.basis` reports the weaker of the two so a
+half-established row is never advertised as fully established.
+
+**Rank movement as well as size (D23).** A gap-ranked table returns much the same assets every day,
+because a permanent property of an asset is not news about it. `asset_divergence_movers()` ranks the
+change between two recorded cross-sections instead. Both ends are measurements, both are on the row,
+and every asset is compared over the same interval — an asset missing from the baseline yields no
+row rather than a change measured against whatever was nearest.
+
 **Anything reading `raw_samples` reads one payload at a time (D19).** A batch of LONGTEXT bodies
 exceeds the memory limit on a shared host. This was found the hard way.
 
@@ -142,11 +159,20 @@ time. A daily sample makes the product pointless.
 
 ## Constraints
 
-- **Rate limit 50 requests/minute**, measured. Per-asset polling batches 100 ids into one call.
+- **Rate limit 50 requests/minute**, measured.
 - **15,000 credits/month** on the Basic plan. This is the binding constraint on the whole product.
-  Credits are read from each response and logged, never estimated.
-- **Cadence 10 min market-wide, 30 min per asset** — set by the budget, not by preference (D15).
-  Do not raise it without redoing the arithmetic; `app/bin/health.php` prints remaining headroom in days.
+  Credits are read from each response and logged, never estimated. Current burn is **356/day —
+  10,680/month** (D23).
+- **Cadence is per endpoint**, declared in `app/lib/endpoints.php`; the cron entries are a cheap
+  15-minute tick that decides what is due. Do not raise a cadence without redoing the arithmetic;
+  `app/bin/health.php` prints remaining headroom in days.
+- **The universe is the top 200 by market cap**, in one `listings_latest` call. CMC prices that
+  endpoint per 200 data points, so 200 costs the same credit as 100 (D23). Past 200 the constraint
+  is `asset_metric` row volume on a shared host, not credits.
+- **Derivation is free and should not lag the recorder.** `extract.php` and `score.php` make no
+  network call and spend no credit, so they run on the same 15-minute tick as the poller, offset
+  behind it. They are separate cron entries so a slow derivation can never delay a fetch — that is
+  the rule, not the interval.
 - Keep each cron run short and stateless. Shared hosts kill long-running processes.
 
 ---

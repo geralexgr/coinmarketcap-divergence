@@ -91,7 +91,7 @@ if ($reference !== '') {
     <aside class="readout">
       <div>
         <div class="bigcap">Gap</div>
-        <div class="bignum"><?= h(fmt_score(abs($current['divergence']))) ?><small> of 100</small></div>
+        <div class="bignum <?= $current['divergence'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($current['divergence'])) ?><small> on &minus;100&hairsp;&hellip;&hairsp;+100</small></div>
         <p class="bignote"><?= h(divergence_sentence($current['divergence'])) ?></p>
         <p class="provenance">
           <?= h(quadrant_label($current['quadrant'])) ?> · sampled <?= h(fmt_time($current['sampled_at'])) ?>
@@ -144,7 +144,33 @@ $filter = query_choice('quadrant', $quadrants, '') ?: null;
 // Stablecoins are excluded by default and the page says so — see D21.
 $withStables = isset($_GET['stablecoins']) && $_GET['stablecoins'] === '1';
 
-$rows = latest_asset_scores($pdo, METHOD_VERSION, $sort, $filter, 200, $withStables);
+// Rank bands. The universe is the top 200 by market cap and the first screen of a
+// gap-ranked table over it is mostly names a reader already follows, so the band is a
+// way of asking the same question of the part of the market they do not. It filters the
+// rows shown and changes no score — every asset is still ranked against the whole
+// recorded cross-section (D23).
+$bands = [
+    ''        => ['label' => 'All 200',    'min' => null, 'max' => null],
+    'top50'   => ['label' => 'Top 50',     'min' => 1,    'max' => 50],
+    'mid'     => ['label' => 'Ranked 51–200', 'min' => 51, 'max' => 200],
+    'deep'    => ['label' => 'Ranked 101–200', 'min' => 101, 'max' => 200],
+];
+$band = query_choice('band', array_keys($bands), '');
+$bandRange = $bands[$band] ?? $bands[''];
+
+$rows = latest_asset_scores(
+    $pdo, METHOD_VERSION, $sort, $filter, 500, $withStables,
+    $bandRange['min'], $bandRange['max']
+);
+
+// "What changed" — the discovery half of the screener. See the note on
+// asset_divergence_movers(): the gap sort finds the most divergent assets and finds
+// largely the same ones every day, because a permanent property of an asset is not news
+// about it. These two lists rank movement instead.
+$moverWindow  = query_choice('changed', ['24h', '7d'], '24h');
+$moverHours   = $moverWindow === '7d' ? 24 * 7 : 24;
+$movers       = asset_divergence_movers($pdo, METHOD_VERSION, $moverHours, 10, $withStables);
+$crossings    = asset_quadrant_crossings($pdo, METHOD_VERSION, $moverHours, 10, $withStables);
 
 if ($rows === []) {
     render_empty_state(
@@ -158,14 +184,121 @@ if ($rows === []) {
 }
 
 /** Keeps the current filter when a sort link is followed, and the reverse. */
-$link = static function (array $overrides) use ($sort, $filter, $withStables): string {
+$link = static function (array $overrides) use ($sort, $filter, $withStables, $band, $moverWindow): string {
     $params = array_filter(
-        ['sort' => $sort, 'quadrant' => $filter, 'stablecoins' => $withStables ? '1' : null],
+        [
+            'sort'        => $sort,
+            'quadrant'    => $filter,
+            'stablecoins' => $withStables ? '1' : null,
+            'band'        => $band !== '' ? $band : null,
+            'changed'     => $moverWindow !== '24h' ? $moverWindow : null,
+        ],
         static fn($v) => $v !== null
     );
     return 'assets.php?' . http_build_query(array_filter($overrides + $params, static fn($v) => $v !== null && $v !== ''));
 };
 ?>
+
+<?php
+// ---------------------------------------------------------------------------
+// What changed. Above the screener on purpose: the largest gaps are a standing
+// property of the universe and the movements are the part that is new since the
+// reader last looked.
+// ---------------------------------------------------------------------------
+$changeRow = static function (array $r): void {
+    ?>
+    <tr>
+      <td class="tick"><a href="assets.php?asset=<?= (int) $r['cmc_id'] ?>"><?= h($r['symbol']) ?></a>
+          <em><?= h($r['name']) ?><?= $r['rank_last'] !== null ? ' · rank ' . (int) $r['rank_last'] : '' ?></em></td>
+      <td class="muted"><?= h(fmt_signed($r['divergence_then'])) ?></td>
+      <td class="gap <?= $r['divergence'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($r['divergence'])) ?></td>
+      <td class="gap <?= $r['divergence_change'] >= 0 ? 'm' : 'v' ?>"><?= h(fmt_signed($r['divergence_change'])) ?></td>
+      <td class="quad-tag reading">
+        <?php if ($r['crossed']): ?>
+          <?= h(quadrant_label((string) $r['quadrant_then'])) ?> &rarr; <?= h(quadrant_label((string) $r['quadrant'])) ?>
+        <?php else: ?>
+          <?= h(quadrant_label((string) $r['quadrant'])) ?> throughout
+        <?php endif; ?>
+      </td>
+    </tr>
+    <?php
+};
+?>
+
+<section class="tablewrap wide" id="changed">
+  <div class="plothead">
+    <h2>What changed</h2>
+    <div class="windows">
+      <?php foreach (['24h' => 'Last 24h', '7d' => 'Last 7 days'] as $key => $label): ?>
+        <?php if ($key === $moverWindow): ?><b><?= h($label) ?></b>
+        <?php else: ?><a href="<?= h($link(['changed' => $key])) ?>"><?= h($label) ?></a><?php endif; ?>
+      <?php endforeach; ?>
+    </div>
+  </div>
+
+  <?php if ($movers === []): ?>
+    <p class="plotsub">
+      Not enough recorded history yet to measure a change over <?= h($moverWindow === '7d' ? 'seven days' : '24 hours') ?>.
+      Both ends of a comparison have to be samples that were actually taken, so this
+      table appears once there is a cross-section that old — it is not interpolated from
+      one that is nearer.
+    </p>
+  <?php else: ?>
+    <p class="plotsub">
+      The gap sort below finds the assets that are most divergent, which is largely the
+      same list every day — an attention proxy that permanently outruns turnover is a
+      property of the asset, not news about it. This ranks the assets whose gap
+      <em>moved</em> most between two recorded cross-sections,
+      <?= h(fmt_time($movers[0]['sampled_at_then'])) ?> and
+      <?= h(fmt_time($movers[0]['sampled_at'])) ?>. Every asset is measured over the same
+      interval.
+    </p>
+
+    <table class="screener">
+      <thead>
+        <tr>
+          <th>Asset</th>
+          <th>Gap then</th>
+          <th>Gap now</th>
+          <th>Change</th>
+          <th class="reading">Reading</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($movers as $r) { $changeRow($r); } ?>
+      </tbody>
+    </table>
+
+    <?php if ($crossings !== []): ?>
+      <h3 class="subhead">Crossed a midline</h3>
+      <p class="plotsub">
+        The <?= count($crossings) ?> asset<?= count($crossings) === 1 ? '' : 's' ?> whose move
+        carried <?= count($crossings) === 1 ? 'it' : 'them' ?> into a different quadrant in this
+        window. A crossing changes what the reading is called; it is still a description of a
+        recorded interval.
+      </p>
+      <table class="screener">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Gap then</th>
+            <th>Gap now</th>
+            <th>Change</th>
+            <th class="reading">Crossed from &rarr; to</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($crossings as $r) { $changeRow($r); } ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+
+    <p class="tfoot">
+      A change is the difference between two measurements that were both recorded. It says
+      what the gap did between those two moments and nothing about what it does next.
+    </p>
+  <?php endif; ?>
+</section>
 
 <section class="tablewrap wide">
   <div class="plothead">
@@ -181,7 +314,7 @@ $link = static function (array $overrides) use ($sort, $filter, $withStables): s
   <p class="plotsub">
     <?= count($rows) ?> assets, sampled <?= h(fmt_time($rows[0]['sampled_at'])) ?>. Each asset's two
     scores are its rank against the rest of the tracked universe at that instant — turnover in the
-    92nd percentile of the top 100 means exactly that, and nothing about what happens next.
+    92nd percentile of the top 200 means exactly that, and nothing about what happens next.
     <a href="method.php#basis">How this differs from the market chart</a>.
   </p>
   <p class="plotsub">
@@ -195,6 +328,13 @@ $link = static function (array $overrides) use ($sort, $filter, $withStables): s
       <a href="<?= h($link(['stablecoins' => '1'])) ?>">Show them anyway</a>.
     <?php endif; ?>
   </p>
+  <div class="windows bandrow">
+    <span class="bandcap">Rank band</span>
+    <?php foreach ($bands as $key => $meta): ?>
+      <?php if ($key === $band): ?><b><?= h($meta['label']) ?></b>
+      <?php else: ?><a href="<?= h($link(['band' => $key])) ?>"><?= h($meta['label']) ?></a><?php endif; ?>
+    <?php endforeach; ?>
+  </div>
 
   <table class="screener">
     <thead>

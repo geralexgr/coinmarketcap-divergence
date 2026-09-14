@@ -154,7 +154,7 @@ $calls = [];   // [key, query] — flattened, because asset endpoints expand int
 
 foreach ($endpoints as $entry) {
     if ($scope === 'asset' && array_key_exists('id', $entry['query'])) {
-        // Per-asset endpoints take a comma-separated id list, so the top 100 is one
+        // Per-asset endpoints take a comma-separated id list, so the whole universe is
         // call rather than a hundred. The universe comes from the most recent
         // listings sample this poller already stored — no extra call, and it means
         // the asset run records against the same universe the market run saw.

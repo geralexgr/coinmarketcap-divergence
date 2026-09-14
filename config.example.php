@@ -28,7 +28,7 @@ return [
     // Uncomment to put them elsewhere, or set false to disable the file entirely
     // (cron still captures output through its own redirect).
     // 'log_path'       => '/absolute/path/to/divergence.log',
-    'asset_universe'    => 100,   // top N by market cap
+    'asset_universe'    => 200,   // top N by market cap. 200 costs the same credit as 100 (D23)
     'request_timeout'   => 10,    // seconds; shared hosts kill long runs
 
     // Basic plan, measured 13 Sep 2026 — see docs/decisions.md D14.

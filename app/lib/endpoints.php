@@ -114,9 +114,11 @@ function endpoint_catalogue(): array
 
         $e('listings_latest', '/v1/cryptocurrency/listings/latest', 'support',
             'top N by market cap: id, symbol, rank, volume, market cap',
-            ['start' => 1, 'limit' => 100, 'convert' => 'USD'], true, 'market', 'yes',
-            'Defines the asset universe and carries the per-asset Money inputs in the same call. '
-            . 'Half the core cadence: the universe does not reshuffle every quarter hour.', 30),
+            ['start' => 1, 'limit' => 200, 'convert' => 'USD'], true, 'market', 'yes',
+            'Defines the asset universe and carries every per-asset input that is callable on '
+            . 'this plan, in the same call. Half the core cadence: the universe does not '
+            . 'reshuffle every quarter hour. limit=200 because CMC prices this endpoint per 200 '
+            . 'data points returned, so the second hundred assets are free — see D23.', 30),
 
         // -------------------------------------------------------------------
         // Voice — what the market is saying.
@@ -194,11 +196,19 @@ function endpoint_catalogue(): array
             . 'but not yet scored — the HHI input is declared at weight zero until there is '
             . 'enough history to set a reference range from measurement rather than instinct.', 60),
 
+        // Callable, verified, and no longer polled. It returns exactly the metrics
+        // listings_latest already returns — both extractors call asset_money_metrics()
+        // on the same shape — and the per-asset scorer anchors its cross-sections on
+        // listings_latest alone, so not one quotes_latest row has ever reached a score.
+        // It was ~1,440 credits a month, about a tenth of the budget, buying a second
+        // copy of data already on disk. Retired rather than deleted: the access result
+        // is a measurement worth keeping, and the day a per-asset input appears that
+        // listings does not carry, this is where it comes from. See D23.
         $e('quotes_latest', '/v2/cryptocurrency/quotes/latest', 'money',
             'volume_24h, market_cap, volume_change_24h per asset — turnover',
-            ['id' => '1,1027,825', 'convert' => 'USD'], true, 'asset', 'yes',
-            'Turnover = volume_24h / market_cap. Money moving relative to the size of '
-            . 'the thing it is moving in. Batched by id list, so 100 assets is one call.', 30),
+            ['id' => '1,1027,825', 'convert' => 'USD'], false, 'asset', 'yes',
+            'Turnover = volume_24h / market_cap. Duplicates listings_latest on this plan, '
+            . 'so it is verified but not polled (D23). Batched by id list, 100 ids per credit.', 30),
 
         $e('exchange_listings', '/v1/exchange/listings/latest', 'money',
             'per-exchange 24h volume, for concentration',

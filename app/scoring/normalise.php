@@ -10,6 +10,12 @@
  * none. Which one produced a row is stored on the row and printed on the method page —
  * scores either side of the switchover are not strictly comparable, and hiding that
  * would make the trail dishonest.
+ *
+ * The switchover is **per axis**, because the two axes do not have the same history
+ * available to them. Fear and greed can be backfilled 500 days from CoinMarketCap's own
+ * historical endpoint; not one Money input can be backfilled at all. Holding Voice on a
+ * hand-set range until Money catches up would be a week of worse measurement in exchange
+ * for a symmetry nobody asked for. See `basis_for_axis()` and D22.
  */
 
 declare(strict_types=1);
@@ -70,6 +76,9 @@ function normalise_percentile(float $value, array $history, bool $invert = false
  *
  * The switchover is a property of how much history exists, not of the calendar, so a
  * deployment that started recording late gets its fixed week from its own first sample.
+ *
+ * `$firstSampleAt` is the first reading of **the inputs being scored**, which is not the
+ * same thing as the first sample this deployment recorded — see `basis_for_axis()`.
  */
 function basis_for(string $firstSampleAt, string $sampledAt, int $fixedDays = FIXED_BASIS_DAYS): string
 {
@@ -80,6 +89,51 @@ function basis_for(string $firstSampleAt, string $sampledAt, int $fixedDays = FI
     }
 
     return ($at - $first) >= $fixedDays * 86400 ? 'percentile' : 'fixed';
+}
+
+/**
+ * The basis for one axis, from the history that axis's own inputs actually have.
+ *
+ * The two axes stopped reaching percentile rank together the moment the fear-and-greed
+ * history was backfilled (D22). Voice has 500 days of its one input; the Money inputs
+ * have only what this deployment recorded, because CoinMarketCap publishes no history
+ * for any of them. Deciding both from the recorder's start date would hold Voice on a
+ * hand-set 0-100 range for a week for no reason other than that Money has to wait.
+ *
+ * So each axis is asked about its own inputs. A percentile rank needs a distribution to
+ * rank against, and whether that distribution exists is a fact about the input, not
+ * about the calendar.
+ *
+ * `$axisHistoryStart` is null when the axis has no readings at all, which scores
+ * `fixed` — the same answer as a brand-new deployment, and the right one.
+ */
+function basis_for_axis(?string $axisHistoryStart, string $sampledAt, int $fixedDays = FIXED_BASIS_DAYS): string
+{
+    if ($axisHistoryStart === null) {
+        return 'fixed';
+    }
+
+    return basis_for($axisHistoryStart, $sampledAt, $fixedDays);
+}
+
+/**
+ * The single label for a row whose two axes may sit on different bases.
+ *
+ * `scores.basis` predates the split and the charts still group on it, so it has to keep
+ * meaning something. It means the weaker of the two: a row is only safely comparable
+ * with another row to the extent of its least-established axis, and calling a
+ * half-percentile row `percentile` would invite exactly the comparison that is not
+ * valid. The per-axis columns carry the detail and the method page prints both.
+ */
+function combined_basis(string $voiceBasis, string $moneyBasis): string
+{
+    if ($voiceBasis === $moneyBasis) {
+        return $voiceBasis;
+    }
+
+    // cross_section is the per-asset basis and is never mixed with the other two, so
+    // the only real case here is one axis on percentile and the other still on fixed.
+    return in_array('fixed', [$voiceBasis, $moneyBasis], true) ? 'fixed' : $voiceBasis;
 }
 
 /**

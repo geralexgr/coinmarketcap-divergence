@@ -438,3 +438,96 @@ test('the method describes itself for the method page and the MCP tool', functio
     $availableCount = count(array_filter($voice, static fn(array $i): bool => $i['available']));
     assert_same(1, $availableCount, 'and exactly one of them is callable on the Basic plan');
 });
+
+// ---------------------------------------------------------------------------
+// A basis per axis (D22)
+// ---------------------------------------------------------------------------
+
+test('each axis reaches percentile rank on its own history, not the recorder start', function (): void {
+    // The point of the fear-and-greed backfill. Voice has 500 days behind it and Money
+    // has whatever this deployment recorded, so deciding both from one date would hold
+    // Voice on a hand-set range for a week for no reason.
+    $now = '2026-09-14 16:00:00';
+
+    assert_same('percentile', basis_for_axis('2025-05-01 00:00:00', $now), 'Voice, with a year of backfill');
+    assert_same('fixed', basis_for_axis('2026-09-13 10:20:00', $now), 'Money, recording for a day');
+    assert_same('percentile', basis_for_axis('2026-09-01 00:00:00', $now), 'and Money once a week has passed');
+});
+
+test('an axis with no readings at all scores on the fixed basis', function (): void {
+    // Not an error and not a percentile against nothing: the same answer a brand-new
+    // deployment gets, which is the right one.
+    assert_same('fixed', basis_for_axis(null, '2026-09-14 16:00:00'), 'no history means no ranking');
+});
+
+test('a row is labelled with the weaker of its two bases', function (): void {
+    // scores.basis predates the split and the charts still group on it. A row is only
+    // comparable to the extent of its least-established axis, so calling a
+    // half-percentile row 'percentile' would invite exactly the comparison that is not
+    // valid.
+    assert_same('fixed', combined_basis('percentile', 'fixed'), 'Voice ahead of Money');
+    assert_same('fixed', combined_basis('fixed', 'percentile'), 'and the other way round');
+    assert_same('percentile', combined_basis('percentile', 'percentile'), 'both established');
+    assert_same('fixed', combined_basis('fixed', 'fixed'), 'neither');
+    assert_same('cross_section', combined_basis('cross_section', 'cross_section'), 'the per-asset basis is untouched');
+});
+
+test('a composed row records the basis of each axis as well as the summary', function (): void {
+    $voice = ['score' => 70.0, 'used' => 1, 'possible' => 3, 'parts' => []];
+    $money = ['score' => 40.0, 'used' => 5, 'possible' => 5, 'parts' => []];
+
+    $row = compose_score($voice, $money, '2026-09-14 16:00:00', 'percentile', 0, 'market', 'fixed');
+
+    assert_same('percentile', $row['voice_basis'], 'the Voice axis is on percentile rank');
+    assert_same('fixed', $row['money_basis'], 'the Money axis is not');
+    assert_same('fixed', $row['basis'], 'and the row as a whole claims only the weaker');
+    assert_close(-30.0, $row['divergence'], 'money minus voice, unchanged');
+});
+
+test('a caller with one basis for the whole row still gets the old behaviour', function (): void {
+    // The per-asset cross-section has one basis for both axes and should not have to
+    // say so twice.
+    $axis = ['score' => 50.0, 'used' => 2, 'possible' => 3, 'parts' => []];
+    $row = compose_score($axis, $axis, '2026-09-14 16:00:00', 'cross_section', 1027, 'asset');
+
+    assert_same('cross_section', $row['basis'], 'the summary');
+    assert_same('cross_section', $row['voice_basis'], 'and both axes');
+    assert_same('cross_section', $row['money_basis'], 'without being passed twice');
+});
+
+test('an axis history start is the earliest reading across that axis inputs', function (): void {
+    // The earliest, not the latest: an axis whose weights renormalise over whatever
+    // survived is already comfortable with its inputs having different coverage, and
+    // taking the latest would hold the whole axis back for one late-added input.
+    $series = [
+        'fear_greed'  => [['at' => '2025-05-01 00:00:00', 'value' => 50.0, 'raw_sample_id' => 1],
+                          ['at' => '2026-09-14 00:00:00', 'value' => 69.0, 'raw_sample_id' => 2]],
+        'open_interest' => [['at' => '2026-09-13 10:20:00', 'value' => 1.0, 'raw_sample_id' => 3]],
+    ];
+
+    $voice = [['metric' => 'fear_greed'], ['metric' => 'trending_churn']];
+    $money = [['metric' => 'open_interest']];
+
+    assert_same('2025-05-01 00:00:00', axis_history_start($voice, $series), 'the backfilled input wins');
+    assert_same('2026-09-13 10:20:00', axis_history_start($money, $series), 'Money has only what was recorded');
+    assert_same(null, axis_history_start([['metric' => 'nothing_recorded']], $series), 'an axis with no data at all');
+});
+
+test('a backfilled input ranks against its whole history, not the default window', function (): void {
+    // The failure this catches: fetching 500 days and then ranking against 30 of them,
+    // which uses 6% of what was paid for and gives a daily input a percentile with a
+    // resolution of 3.3 points.
+    assert_same(500, percentile_window_days('fear_greed'), 'fear and greed has 500 days behind it');
+    assert_same(30, percentile_window_days('open_interest'), 'a recorded-only input keeps the default');
+    assert_same(30, percentile_window_days('anything_else'), 'and so does an input added later');
+
+    // And the window is actually honoured when the history is read.
+    $points = [];
+    for ($i = 400; $i >= 1; $i--) {
+        $points[] = ['at' => gmdate('Y-m-d H:i:s', strtotime('2026-09-14 00:00:00 UTC') - $i * 86400), 'value' => (float) $i, 'raw_sample_id' => 1];
+    }
+    $at = '2026-09-14 00:00:00';
+
+    assert_same(30, count(history_before($points, $at, 30)), 'the default window reaches back a month');
+    assert_same(400, count(history_before($points, $at, 500)), 'the backfilled window reaches the whole series');
+});
