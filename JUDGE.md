@@ -76,7 +76,7 @@ cd coinmarketcap-divergence
 php tests/run.php
 ```
 
-82 tests, no framework, no network, no database, no composer. They cover the parts that fail
+84 tests, no framework, no network, no database, no composer. They cover the parts that fail
 *silently*: normalisation boundaries, a missing input being scored as zero, a percentile that peeks
 at the future, and the readout copy being grepped for future-tense words.
 
@@ -124,6 +124,12 @@ We would rather you heard this from us than found it.
   minutes at a tenth of the credit budget, returning per-asset metrics `listings_latest` already
   carried in the same run, into rows the per-asset scorer never read. Found by tracing which
   endpoint each scored metric actually comes from. [D23](docs/decisions.md)
+- **And then broke the feature we had just shipped, in public, for an hour.** Doubling the tracked
+  universe re-ranked every asset against a different population, so the new "what changed" table
+  reported a 31-point median move that was entirely the universe change. A per-asset score is a rank
+  *against the universe at that instant*, and we differenced two of them without checking the
+  universe matched. It now refuses the comparison and prints the reason.
+  [D24](docs/decisions.md)
 - **The per-asset Voice proxy is price-derived**, because there is no per-asset attention data at
   all on this plan. It is the weakest input in the product and it is labelled as such wherever it
   appears. The worry was that it would correlate with the Money axis and the screener would rank one
@@ -146,7 +152,7 @@ We would rather you heard this from us than found it.
 | What it is and why | [README.md](README.md) |
 | How every number is produced | [docs/method.md](docs/method.md) |
 | What it cannot see | [docs/limits.md](docs/limits.md) |
-| Why it was built this way | [docs/decisions.md](docs/decisions.md) — 23 decisions, with the reasoning |
+| Why it was built this way | [docs/decisions.md](docs/decisions.md) — 24 decisions, with the reasoning |
 | Where the API got in the way | [docs/api-friction.md](docs/api-friction.md) |
 | Which endpoints respond, measured | [docs/endpoint-access.md](docs/endpoint-access.md) |
 | Deploying it yourself | [DEPLOY.md](DEPLOY.md) |

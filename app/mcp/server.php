@@ -283,14 +283,18 @@ function mcp_call_tool(string $name, array $args): array
                 ? asset_quadrant_crossings($pdo, METHOD_VERSION, $hours, $limit)
                 : asset_divergence_movers($pdo, METHOD_VERSION, $hours, $limit);
 
+            // The window carries both ends of the interval and, when the comparison is
+            // not valid, the reason — so an empty result never reads as "nothing moved".
+            $window = asset_movers_window($pdo, METHOD_VERSION, $hours);
+
             return [
                 'hours'      => $hours,
                 'sort'       => 'absolute change in divergence, descending',
                 'basis'      => 'cross_section',
-                // Both ends of the interval, so an empty result reads as "no recorded
-                // cross-section that old" rather than "nothing moved".
-                'from'       => $rows === [] ? null : $rows[0]['sampled_at_then'],
-                'to'         => $rows === [] ? null : $rows[0]['sampled_at'],
+                'from'       => $window['from'],
+                'to'         => $window['to'],
+                'comparable' => $window['comparable'],
+                'reason'     => $window['reason'],
                 'count'      => count($rows),
                 'assets'     => $rows,
                 'note'       => 'The difference between two recorded measurements. Not advice, and not a forecast.',

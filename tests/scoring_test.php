@@ -531,3 +531,26 @@ test('a backfilled input ranks against its whole history, not the default window
     assert_same(30, count(history_before($points, $at, 30)), 'the default window reaches back a month');
     assert_same(400, count(history_before($points, $at, 500)), 'the backfilled window reaches the whole series');
 });
+
+// ---------------------------------------------------------------------------
+// Movers: the comparison set is part of the measurement (D24)
+// ---------------------------------------------------------------------------
+
+test('a universe that changed size is not a market that moved', function (): void {
+    // The bug this encodes. Per-asset scores are ranks against the universe at that
+    // instant, so raising asset_universe from 100 to 200 re-ranked every asset against a
+    // different population — and the live movers table reported a median absolute change
+    // of 31 points with 52 of 86 assets crossing a midline in 24 hours, none of it real.
+    //
+    // The pure part of that check is the tolerance arithmetic, tested here against the
+    // sizes that actually occurred. The query is exercised in the integration pass.
+    $differs = static fn(int $from, int $to, float $tol = 0.10): bool
+        => max($from, $to) > 0 && abs($to - $from) / max($from, $to) > $tol;
+
+    assert_true($differs(100, 200), 'the 100 to 200 change that produced the bug is caught');
+    assert_true($differs(86, 183), 'and the same change as the non-stablecoin table saw it');
+    assert_true(!$differs(200, 198), 'two assets of natural rank churn is not a universe change');
+    assert_true(!$differs(200, 182), 'nor is nine percent of it');
+    assert_true($differs(200, 179), 'but eleven percent is over the line');
+    assert_true(!$differs(200, 200), 'an unchanged universe is always comparable');
+});

@@ -169,6 +169,9 @@ $rows = latest_asset_scores(
 // about it. These two lists rank movement instead.
 $moverWindow  = query_choice('changed', ['24h', '7d'], '24h');
 $moverHours   = $moverWindow === '7d' ? 24 * 7 : 24;
+// The window reports whether the two cross-sections are comparable at all — see
+// asset_movers_window(). When they are not, the reason is printed rather than the table.
+$moverBounds  = asset_movers_window($pdo, METHOD_VERSION, $moverHours);
 $movers       = asset_divergence_movers($pdo, METHOD_VERSION, $moverHours, 10, $withStables);
 $crossings    = asset_quadrant_crossings($pdo, METHOD_VERSION, $moverHours, 10, $withStables);
 
@@ -238,10 +241,14 @@ $changeRow = static function (array $r): void {
 
   <?php if ($movers === []): ?>
     <p class="plotsub">
-      Not enough recorded history yet to measure a change over <?= h($moverWindow === '7d' ? 'seven days' : '24 hours') ?>.
-      Both ends of a comparison have to be samples that were actually taken, so this
-      table appears once there is a cross-section that old — it is not interpolated from
-      one that is nearer.
+      <?php if ($moverBounds['reason'] !== null): ?>
+        <?= h($moverBounds['reason']) ?>
+      <?php else: ?>
+        Not enough recorded history yet to measure a change over
+        <?= h($moverWindow === '7d' ? 'seven days' : '24 hours') ?>. Both ends of a comparison
+        have to be samples that were actually taken, so this table appears once there is a
+        cross-section that old — it is not interpolated from one that is nearer.
+      <?php endif; ?>
     </p>
   <?php else: ?>
     <p class="plotsub">

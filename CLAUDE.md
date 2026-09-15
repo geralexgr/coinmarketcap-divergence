@@ -136,6 +136,13 @@ change between two recorded cross-sections instead. Both ends are measurements, 
 and every asset is compared over the same interval — an asset missing from the baseline yields no
 row rather than a change measured against whatever was nearest.
 
+**The comparison set is part of the measurement (D24).** A per-asset score is a rank against the
+universe at that instant, so two cross-sections taken over universes of different size cannot be
+compared — raising `asset_universe` from 100 to 200 produced a live movers table reporting a
+31-point median move that was entirely the boundary. `asset_movers_window()` refuses the comparison
+and prints the reason. If you add anything that differences two per-asset scores, check the window
+first.
+
 **Anything reading `raw_samples` reads one payload at a time (D19).** A batch of LONGTEXT bodies
 exceeds the memory limit on a shared host. This was found the hard way.
 

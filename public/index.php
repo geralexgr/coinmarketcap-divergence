@@ -52,6 +52,7 @@ $assets = latest_asset_scores($pdo, METHOD_VERSION, 'gap', null, 12, false);
 // finds much the same ones daily; this finds the ones that moved, which is what a reader
 // returning to the page does not already have. Six here, all of them one click away on
 // the full screener. See asset_divergence_movers().
+$moverBounds = asset_movers_window($pdo, METHOD_VERSION, 24);
 $movers = asset_divergence_movers($pdo, METHOD_VERSION, 24, 6, false);
 
 $windowLabel = ['24h' => 'last 24 hours', '7d' => 'last 7 days', '30d' => 'last 30 days', 'all' => 'all recorded history'][$window];
@@ -91,11 +92,28 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
         static fn(array $r): string => strtolower((string) $r['label']),
         array_slice($rows, 0, 3)
     ));
+
+    // On the percentile basis the axis is not the input, it is the input's rank against
+    // its own history — the index reading 67 plots at 88. Naming only the input would
+    // leave a reader comparing the chart against CoinMarketCap and finding a mismatch
+    // that is actually the method working as published (D22).
+    $axisHint = static function (array $rows, ?string $basis) use ($hint): string {
+        $names = $hint($rows);
+        if ($basis !== 'percentile' || $names === '') {
+            return $names;
+        }
+        $window = max(array_map(
+            static fn(array $r): int => percentile_window_days((string) $r['metric']),
+            $rows
+        ));
+
+        return $names . ' — ranked against ' . $window . ' days';
+    };
     ?>
     <div id="quadrant"
          class="quadrant"
-         data-voice-hint="<?= h($hint($voiceInputs)) ?>"
-         data-money-hint="<?= h($hint($moneyInputs)) ?>"
+         data-voice-hint="<?= h($axisHint($voiceInputs, $current['voice_basis'] ?? null)) ?>"
+         data-money-hint="<?= h($axisHint($moneyInputs, $current['money_basis'] ?? null)) ?>"
          data-series='<?= h(json_encode($series, JSON_UNESCAPED_SLASHES)) ?>'
          data-gaps='<?= h(json_encode($gaps, JSON_UNESCAPED_SLASHES)) ?>'></div>
 
@@ -139,6 +157,21 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
     <div class="inputs">
       <h3>What went into it</h3>
       <p>Current values in their native units. Each is one query against the endpoint named.</p>
+      <?php if (($current['voice_basis'] ?? null) === 'percentile' || ($current['money_basis'] ?? null) === 'percentile'): ?>
+        <?php // A native value and its score are different numbers on the percentile basis.
+              // Without this the panel shows the index at 67 beside a Voice score of 88 and
+              // invites a reader to conclude the arithmetic is wrong. ?>
+        <p>
+          These are the raw readings, not the scores.
+          <?php if (($current['voice_basis'] ?? null) === 'percentile'): ?>
+            Voice is where the fear and greed index ranks against its own last
+            <?= percentile_window_days('fear_greed') ?> days, so
+            <?= h(fmt_native($voiceInputs[0]['value'] ?? null, (string) ($voiceInputs[0]['unit'] ?? ''))) ?>
+            scores <?= h(fmt_score($current['voice'])) ?>.
+          <?php endif; ?>
+          <a href="method.php#basis">How each is normalised</a>.
+        </p>
+      <?php endif; ?>
       <?php foreach ([['v', $voiceInputs], ['m', $moneyInputs]] as [$axis, $rows]): ?>
         <?php foreach ($rows as $row): ?>
           <div class="row">
@@ -188,12 +221,15 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
   </p>
 </section>
 
-<?php if ($movers !== []): ?>
+<?php if ($movers !== [] || $moverBounds['reason'] !== null): ?>
 <section class="tablewrap">
   <div class="plothead">
     <h2>What moved in the last 24 hours</h2>
     <div class="windows"><a href="assets.php#changed">All movers &rarr;</a></div>
   </div>
+  <?php if ($movers === []): ?>
+    <p class="plotsub"><?= h($moverBounds['reason']) ?></p>
+  <?php else: ?>
   <p class="plotsub">
     The table above ranks assets by how large their gap is, which is largely the same list
     every day. This ranks them by how much the gap <em>changed</em>, between two
@@ -228,6 +264,7 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
     A change is the difference between two recorded measurements. It describes what the gap
     did between those two moments, and nothing about what it does next.
   </p>
+  <?php endif; ?>
 </section>
 <?php endif; ?>
 <?php endif; ?>

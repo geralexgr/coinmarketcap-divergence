@@ -199,6 +199,11 @@ That is the question a screener is actually asked, and it needs no banked histor
 works from day one. It is a different measurement from the market-wide series and the two are never
 plotted together. See [D17](decisions.md).
 
+**One consequence, and it is not obvious.** Because the comparison set is part of the measurement,
+two per-asset scores can only be differenced if they were ranked against the same universe. When the
+tracked universe changes size, the "what changed" tables refuse the comparison and say why rather
+than reporting the boundary as movement — see [D24](decisions.md).
+
 ---
 
 ## Provenance
