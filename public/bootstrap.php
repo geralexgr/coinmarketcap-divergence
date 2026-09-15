@@ -260,6 +260,30 @@ function recording_line(array $health): string
     return sprintf('recording since %s, %s samples', $since, number_format($health['samples']));
 }
 
+/**
+ * A static asset's URL, with the file's modification time on it.
+ *
+ * public/.htaccess caches CSS and JS for seven days, and a max-age that long means the
+ * browser does not ask the server whether the file changed — it serves from disk without
+ * a request, so Last-Modified and ETag are never consulted. A deploy that edits app.css
+ * therefore reaches nobody who has already visited until the week is up.
+ *
+ * Shortening the cache would be the wrong fix: it makes every ordinary visit re-download
+ * a file that has not changed, and still leaves a window in which the wrong stylesheet is
+ * served. Changing the URL instead makes a stale asset impossible while the long cache
+ * stays a pure win. This is what lets .htaccess keep its seven days.
+ *
+ * filemtime() is warned about rather than fatal if the file is missing, and the URL then
+ * degrades to the unversioned form — a missing stylesheet is the deployer's problem to
+ * see, not a reason for every page on the site to stop rendering.
+ */
+function asset_url(string $file): string
+{
+    $mtime = @filemtime(__DIR__ . '/assets/' . $file);
+
+    return 'assets/' . $file . ($mtime === false ? '' : '?v=' . $mtime);
+}
+
 /** @param array<string,mixed> $health */
 function render_head(string $title, string $active, array $health): void
 {
@@ -283,7 +307,7 @@ function render_head(string $title, string $active, array $health): void
 <title><?= h($title) ?> — Divergence</title>
 <meta name="description" content="The gap between what the crypto market is saying and what it has committed money to. A measurement, not a forecast.">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="<?= h(asset_url('app.css')) ?>">
 <!-- Link previews. Absolute URLs, because a relative og:image is ignored by most
      scrapers — and a judge sharing the link is exactly when the preview matters. -->
 <meta property="og:type" content="website">
@@ -320,7 +344,7 @@ function render_foot(): void
        is how to check any number on this page against CoinMarketCap yourself.</p>
   </footer>
 </div>
-<script src="assets/app.js"></script>
+<script src="<?= h(asset_url('app.js')) ?>"></script>
 </body>
 </html>
 <?php

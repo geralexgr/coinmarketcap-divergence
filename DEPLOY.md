@@ -197,3 +197,10 @@ state: everything is in the database and the config file, and both sit outside t
 
 If a scoring weight changed, run `php app/bin/score.php --rebuild` afterwards — the whole history is
 rescored from payloads already stored.
+
+**No hard refresh needed.** `.htaccess` caches CSS and JS for seven days, and a `max-age` that long
+means the browser does not ask whether the file changed — it serves from disk without a request. So
+`bootstrap.php` puts each file's modification time on its URL: a changed stylesheet is a new URL and
+reaches everyone immediately, while an unchanged one stays cached for the full week. Uploading
+`app.css` or `app.js` is enough; you do not have to tell anyone to reload, and you do not have to
+shorten the cache to make a deploy visible.
