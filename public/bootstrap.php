@@ -268,6 +268,12 @@ function render_head(string $title, string $active, array $health): void
         'assets' => ['assets.php', 'Assets'],
         'method' => ['method.php', 'Method'],
     ];
+
+    // The repository is part of the product, not a footnote to it: the method is
+    // declared in source, every number here is reproducible from it, and the decision
+    // log records where this was wrong. A visitor who arrives at the URL and cannot
+    // reach any of that is seeing half the thing.
+    $source = 'https://github.com/geralexgr/coinmarketcap-divergence';
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -294,6 +300,7 @@ function render_head(string $title, string $active, array $health): void
       <?php foreach ($nav as $key => [$href, $label]): ?>
         <?php if ($key === $active): ?><b><?= h($label) ?></b><?php else: ?><a href="<?= h($href) ?>"><?= h($label) ?></a><?php endif; ?>
       <?php endforeach; ?>
+      <a class="navout" href="<?= h($source) ?>" rel="noopener">Source</a>
     </nav>
   </header>
 <?php
@@ -307,6 +314,10 @@ function render_foot(): void
        recorded past moment. Nothing here is advice, a recommendation, or a prediction. Source data
        from the CoinMarketCap API; the <a href="method.php">method page</a> states exactly how each
        figure is derived.</p>
+    <p>Source, the method as declared in code, and the log of what this project got wrong:
+       <a href="https://github.com/geralexgr/coinmarketcap-divergence" rel="noopener">github.com/geralexgr/coinmarketcap-divergence</a>.
+       <a href="https://github.com/geralexgr/coinmarketcap-divergence/blob/main/JUDGE.md" rel="noopener">JUDGE.md</a>
+       is how to check any number on this page against CoinMarketCap yourself.</p>
   </footer>
 </div>
 <script src="assets/app.js"></script>

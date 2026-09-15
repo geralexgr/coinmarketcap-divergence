@@ -8,8 +8,9 @@
  * recorder writes every run. Plan access is a separate question, answered by
  * bin/verify-endpoints.php with a real key, and recorded in docs/endpoint-access.md.
  *
- * The derivatives block that this design originally assumed is gone: 38 candidate
- * paths, every one absent. See docs/decisions.md D10.
+ * D10 recorded the derivatives block as gone — 38 candidate paths, every one absent.
+ * That was wrong: the probe swept /v1/ to /v4/ and the family lives under /v5/. The
+ * corrected result is below and in docs/decisions.md D20, which is the entry to read.
  *
  * 'access' records what bin/verify-endpoints.php measured with a real key, re-verified in
  * full on 13 Sep 2026.
@@ -162,14 +163,6 @@ function endpoint_catalogue(): array
             'Per-asset and needs an id, so one call per asset. Only affordable for a short list.'),
 
         // -------------------------------------------------------------------
-        // Money — what the market has committed.
-        //
-        // Not what this design assumed. Funding rate, open interest and liquidations
-        // have no endpoint on the CMC API at any version — probed and recorded in
-        // docs/endpoint-access.md. What is left measures committed money indirectly:
-        // turnover, where that turnover happens, and what sits on exchanges.
-        // -------------------------------------------------------------------
-        // -------------------------------------------------------------------
         // Money — the leverage inputs. D10 said these did not exist; D20 records
         // why that was wrong. They live under /v5/, which the original probe never
         // reached, and they are callable on this plan.
@@ -192,9 +185,11 @@ function endpoint_catalogue(): array
         $e('derivatives_exchanges', '/v5/exchange/derivatives/list', 'money',
             'per-venue derivative volume and open interest, for concentration',
             ['limit' => 100], false, 'market', 'yes',
-            'Replaces the forbidden exchange_listings for the concentration input. Recorded '
-            . 'but not yet scored — the HHI input is declared at weight zero until there is '
-            . 'enough history to set a reference range from measurement rather than instinct.', 60),
+            'Replaces the forbidden exchange_listings for the concentration input. Verified '
+            . 'callable and reserved, but poll is false, so nothing is recorded from it yet: the '
+            . 'HHI input it would feed is declared at weight zero until there is enough history '
+            . 'to set a reference range from measurement rather than instinct. Turning this on '
+            . 'is one flag and 24 credits a day.', 60),
 
         // Callable, verified, and no longer polled. It returns exactly the metrics
         // listings_latest already returns — both extractors call asset_money_metrics()

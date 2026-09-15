@@ -69,6 +69,10 @@ code, .mono {
 .nav a { border-bottom: none; }
 .nav a:hover { color: var(--ink); }
 .nav b { font-weight: 600; color: var(--ink); border-bottom: 2px solid var(--money); padding-bottom: 3px; }
+/* The one nav item that leaves the site. Set apart so it reads as a destination
+   rather than a fourth page of the app. */
+.navout { padding-left: 20px; border-left: 1px solid var(--hairline); }
+.navout::after { content: " \2197"; font-size: 10px; }
 
 /* ---------- market stage ---------- */
 
@@ -234,6 +238,7 @@ td.muted { color: var(--graphite); }
 
 .pagefoot { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--hairline); }
 .pagefoot p { font-size: 11.5px; color: var(--graphite); max-width: 78ch; margin: 0; }
+.pagefoot p + p { margin-top: 7px; }
 
 /* ---------- responsive ---------- */
 
