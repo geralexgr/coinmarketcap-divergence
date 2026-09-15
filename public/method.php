@@ -9,6 +9,14 @@
  * It states the limits first. Ten of the twenty endpoints in the catalogue are forbidden
  * on this key, and a method page that buried that would be worth less than no method page
  * at all.
+ *
+ * **The tables are generated; the paragraphs around them are not.** That is where this page
+ * went wrong once — it went on telling readers that funding rate, open interest and
+ * liquidations do not exist on the API for two method versions after they were found under
+ * `/v5/` and built into the axis printed in use directly below the claim (D20). Anything
+ * on this page that can be read from the declaration is read from it, and what cannot be
+ * is checked by `tests/copy_test.php`. When a weight, an input or an endpoint changes,
+ * the prose is the part that does not change itself.
  */
 
 declare(strict_types=1);
@@ -29,9 +37,25 @@ $activity = $pdo !== null ? endpoint_activity($pdo) : [];
 // which side of it today falls.
 $current = $pdo !== null ? latest_market_score($pdo, METHOD_VERSION) : null;
 
-$switchover = null;
-if ($pdo !== null && $health['first_sample'] !== null) {
-    $switchover = gmdate('j F Y, H:i', (int) strtotime($health['first_sample'] . ' UTC') + FIXED_BASIS_DAYS * 86400);
+// When each axis crosses onto percentile rank, from that axis's own earliest reading.
+//
+// Per axis, because the switchover is per axis (D22). Computing one date from the first
+// raw sample would say the Voice axis crosses a week after recording started, when it
+// crossed the moment 500 days of fear-and-greed history were backfilled behind that
+// date — a page that states the rule and then prints a date contradicting it is worse
+// than one that states neither.
+$switchover = [];
+if ($pdo !== null) {
+    foreach (['voice', 'money'] as $axis) {
+        $started = axis_history_started_at($pdo, available_inputs($axis, 'market'));
+        if ($started === null) {
+            continue;
+        }
+        $switchover[$axis] = [
+            'started' => $started,
+            'at'      => (int) strtotime($started . ' UTC') + FIXED_BASIS_DAYS * 86400,
+        ];
+    }
 }
 
 $axisTitles = [
@@ -84,17 +108,24 @@ $axisTitles = [
 
   <h3>What the Money axis can and cannot see</h3>
   <p>
-    This axis was designed around funding rates, open interest and liquidations. <b>None of those
-    exist on the CoinMarketCap API at any version</b> — 38 candidate paths probed, every one absent,
-    and not as a plan restriction. What replaced them measures money <i>moving</i> and money
-    <i>at rest</i>, not money <i>committed and leveraged</i>. Turnover cannot distinguish a large
-    spot rotation from a leveraged build-up, because nothing in the available data carries leverage.
+    This axis was designed around funding rates, open interest and liquidations, and for one day it
+    did not have them: 38 candidate paths were probed, every one came back absent, and the axis was
+    rebuilt around turnover as a substitute — money <i>moving</i> standing in for money
+    <i>committed and leveraged</i>. <b>That probe was wrong.</b> It swept <span class="mono">/v1/</span>
+    to <span class="mono">/v4/</span> and the derivatives family lives under
+    <span class="mono">/v5/</span>. Open interest, funding rate and liquidations are real, reachable
+    and callable on this plan, and they are the three heaviest inputs in the table below.
   </p>
   <p>
-    The one partial exception is <b>derivative share of activity</b>: global-metrics does carry
-    derivative volume, so how much of the day's trading happened in contracts rather than in the
-    asset is reachable. It is still a volume figure — it says how much was traded, never how much is
-    still held.
+    The substitutes they displaced are kept at <b>weight zero</b> rather than deleted, and every
+    score row records the method version that produced it, so what this axis used to measure stays
+    legible next to what it measures now.
+  </p>
+  <p>
+    What it still cannot see: open interest and funding are <b>BTC only</b>. The derivatives endpoint
+    takes one symbol per call, and a hundred assets would be a hundred credits a sample against a
+    15,000-credit month. BTC is the standard benchmark for market-wide leverage, but a build-up led
+    by altcoins reaches this axis late and muted.
   </p>
 
   <h2 id="inputs">The inputs</h2>
@@ -221,13 +252,21 @@ $axisTitles = [
     fetched later": <b>Voice can be backfilled 500 days and Money cannot be backfilled at all.</b>
     The irreplaceable half of this dataset is the Money axis.
   </p>
-  <?php if ($switchover !== null): ?>
+  <?php
+  // Only the axis still on the fixed basis has a switchover left to state. An axis
+  // already on percentile has one printed above it, live, which is the stronger
+  // statement: what the last score actually used, not when the rule says it changes.
+  foreach (['voice' => 'Voice', 'money' => 'Money'] as $axis => $axisName):
+      if (!isset($switchover[$axis]) || ($current[$axis . '_basis'] ?? 'fixed') !== 'fixed') {
+          continue;
+      }
+  ?>
     <p class="stat">
-      Recording started <?= h(fmt_time($health['first_sample'])) ?>, so the switchover
-      <?= strtotime($health['first_sample'] . ' UTC') + FIXED_BASIS_DAYS * 86400 < time() ? 'happened' : 'falls' ?>
-      on <b><?= h($switchover) ?> UTC</b>.
+      The <?= h($axisName) ?> axis has readings from <?= h(fmt_time($switchover[$axis]['started'])) ?>,
+      so it <?= $switchover[$axis]['at'] < time() ? 'reached' : 'reaches' ?> percentile rank on
+      <b><?= h(gmdate('j F Y, H:i', $switchover[$axis]['at'])) ?> UTC</b>.
     </p>
-  <?php endif; ?>
+  <?php endforeach; ?>
 
   <h3>Per asset: ranked against the universe, not against its own past</h3>
   <p>
@@ -282,14 +321,31 @@ $axisTitles = [
   </table>
 
   <h3>Absent from the API entirely</h3>
-  <p>
-    Not a plan restriction — these paths do not resolve at any version, and the Money axis was
-    rebuilt around what does:
-    <span class="mono">/v1/derivatives/listings/latest</span>,
-    <span class="mono">/v1/derivatives/funding-rate/latest</span>,
-    <span class="mono">/v1/derivatives/open-interest/latest</span>,
-    <span class="mono">/v1/derivatives/liquidations/latest</span>.
-  </p>
+  <?php
+  // Read from the catalogue's own `exists` flag rather than typed out here. The list a
+  // page calls absent and the list the verifier refuses to spend a round trip on have to
+  // be the same list — when they were two lists, this page went on calling the
+  // derivatives family unreachable while the poller was recording it (D20).
+  $absent = array_values(array_filter(
+      endpoint_catalogue(),
+      static fn(array $e): bool => $e['exists'] === 'no'
+  ));
+  ?>
+  <?php if ($absent !== []): ?>
+    <p>
+      Not a plan restriction — these paths do not resolve at any version, and what the Money axis
+      now measures instead is in the table above:
+      <?php foreach ($absent as $i => $entry): ?>
+        <span class="mono"><?= h((string) $entry['path']) ?></span><?= $i === count($absent) - 1 ? '.' : ',' ?>
+      <?php endforeach; ?>
+    </p>
+    <p class="muted">
+      The derivatives measurements themselves are <i>not</i> absent — these
+      <?= count($absent) ?> <span class="mono">/v1/</span> spellings of them are. The working paths are the
+      <span class="mono">/v5/</span> entries in the table above, and mistaking the first fact for
+      the second cost this axis a method version.
+    </p>
+  <?php endif; ?>
 
   <h2 id="health">Recording health</h2>
   <?php if ($pdo === null): ?>

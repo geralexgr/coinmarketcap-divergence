@@ -90,8 +90,9 @@ page cannot describe a method the code does not implement.
   403 and a method page that buried that would be worth less than none.
 - The two axes and every input feeding each, including the forbidden ones, marked unavailable
 - The current weights, ranges and the version number
-- All three normalisation bases and **the switchover date**, computed from this deployment's own
-  first sample
+- All three normalisation bases, the basis each axis is on right now, and **the switchover date of
+  whichever axis is still on the fixed basis** — computed from the earliest reading that axis's own
+  inputs have, not from the deployment's first sample, because the switchover is per axis (D22)
 - Which CoinMarketCap endpoints are used, with live call and credit counts from `fetch_log`
 - Recording health: samples, longest gap, failure rate, credits — live
 - A plain statement that the tool gives no advice and makes no predictions

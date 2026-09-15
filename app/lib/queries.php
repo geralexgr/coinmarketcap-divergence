@@ -536,6 +536,35 @@ function current_input_values(PDO $pdo, array $inputs, array $derived = []): arr
 }
 
 /**
+ * The earliest reading any of an axis's own inputs has, or null when it has none.
+ *
+ * The web twin of `axis_history_start()` in `scoring/recompute.php`: same question, same
+ * table, asked of what is stored rather than of a loaded series, so a page can state when
+ * an axis crosses onto percentile rank without loading every sample to find out.
+ *
+ * It exists because the answer is **per axis** and not per deployment (D22). The recorder
+ * started once; the Voice axis carries 500 backfilled days behind that date and the Money
+ * axis carries nothing before it. A page that computed one switchover from the first raw
+ * sample would print a date that is wrong for both axes and right for neither.
+ *
+ * @param array<int,array<string,mixed>> $inputs From `available_inputs()`.
+ */
+function axis_history_started_at(PDO $pdo, array $inputs): ?string
+{
+    $metrics = array_map(static fn(array $i): string => (string) $i['metric'], $inputs);
+    if ($metrics === []) {
+        return null;
+    }
+
+    $in = implode(',', array_fill(0, count($metrics), '?'));
+    $stmt = $pdo->prepare("SELECT MIN(sampled_at) FROM market_metric WHERE metric IN ({$in})");
+    $stmt->execute(array_values($metrics));
+    $earliest = $stmt->fetchColumn();
+
+    return $earliest === false || $earliest === null ? null : (string) $earliest;
+}
+
+/**
  * Recording health, from `fetch_log` and `raw_samples`.
  *
  * The header claim — "recording since 9 Sep, 4,312 samples" — is the thing the whole
