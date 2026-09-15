@@ -88,10 +88,8 @@ $change = static function (string $axis) use ($current, $weekAgo): ?float {
     <?php
     // The axis hints name the inputs actually feeding each axis, read from the same
     // declaration the scorer uses, so a forbidden input is never named on the chart.
-    $hint = static fn(array $rows): string => implode(', ', array_map(
-        static fn(array $r): string => strtolower((string) $r['label']),
-        array_slice($rows, 0, 3)
-    ));
+    // `axis_hint()` handles the separator and the "+2 more" — see bootstrap.php.
+    $hint = static fn(array $rows): string => axis_hint($rows);
 
     // On the percentile basis the axis is not the input, it is the input's rank against
     // its own history — the index reading 67 plots at 88. Naming only the input would

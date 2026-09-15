@@ -8,9 +8,16 @@ Two different questions, answered by two different scripts, and they are easy to
    **Answered 13 September 2026.** 17 endpoints called, 6 credits spent.
 
 **Plan tier: Basic, not Startup.** `/v1/key/info` reports `credit_limit_monthly: 15000` and
-`rate_limit_minute: 50`. Seven endpoints are callable and ten answer HTTP 403. This is the single
-most consequential fact discovered about the project so far — see [decisions.md](decisions.md) D14
-and D15.
+`rate_limit_minute: 50`. **Ten of the twenty endpoints in the catalogue are callable and ten answer
+HTTP 403.** This is the single most consequential fact discovered about the project so far — see
+[decisions.md](decisions.md) D14 and D15.
+
+The verifier run of 13 September called the seventeen endpoints the catalogue held that morning, of
+which seven were callable. The three `/v5/` derivatives endpoints were added and verified the same
+day — [D20](decisions.md), and the section below — which is where the other three callable ones
+come from. `endpoint_access_results()` in `lib/endpoints.php` is the count that is enforced: a test
+asserts it reads ten and ten, so this paragraph cannot drift from the code without the suite saying
+so.
 
 | | Callable | Forbidden |
 |---|---|---|
@@ -23,10 +30,13 @@ Two headline consequences:
 - **The Voice axis lost six of its seven inputs.** What is left is the fear and greed index: one
   number, updated **once a day**. An axis sampled every fifteen minutes off a daily number has daily
   resolution, and `docs/method.md` must say so rather than implying otherwise.
-- **The Money axis got a positioning number back.** `global_metrics` carries
-  `derivatives_volume_24h` — $308bn against $41bn of adjusted spot volume on 13 Sep 2026 — plus
-  `derivatives_24h_percentage_change`. Market-wide only, no funding rate, no open interest, no
-  per-asset split. D10 stands per asset and is amended market-wide.
+- **The Money axis got a positioning number back** — and then, hours later, got the real ones.
+  `global_metrics` carries `derivatives_volume_24h` — $308bn against $41bn of adjusted spot volume
+  on 13 Sep 2026 — plus `derivatives_24h_percentage_change`. Market-wide only, no funding rate, no
+  open interest, no per-asset split, which is what this bullet said when it was written. The
+  `/v5/` family found later the same day carries funding rate and open interest directly, and the
+  Money axis is now built on them: see **Money axis — the derivatives family, found under `/v5/`**
+  below. `derivatives_volume_24h` survives as a weight-zero input.
 
 `lib/endpoints.php` encodes these results in `endpoint_access_results()`, and `endpoints_to_poll()`
 refuses to schedule anything marked forbidden — a 403 costs a round trip, returns nothing, and

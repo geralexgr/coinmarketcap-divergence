@@ -215,6 +215,37 @@ function fmt_ago(?string $utc): string
     };
 }
 
+/**
+ * The line under an axis name on the chart, naming the inputs that feed it.
+ *
+ * Two things this has to get right, both of which it got wrong:
+ *
+ *  1. **The separator cannot be a comma.** Two of the input labels contain one —
+ *     "Liquidations, 24h" and "Volume change, 24h" — so a comma-joined list reads as
+ *     one more input than it has, and "24h" arrives looking like a measurement of its
+ *     own. A middot cannot be confused for part of a label.
+ *  2. **A truncated list has to say it is truncated.** The Money axis has five inputs
+ *     and there is room for three, and naming three of five without a word about the
+ *     other two states something false about the axis on the axis itself.
+ *
+ * @param array<int,array<string,mixed>> $inputs From `available_inputs()`.
+ */
+function axis_hint(array $inputs, int $show = 3): string
+{
+    $labels = array_map(static fn(array $i): string => strtolower((string) $i['label']), $inputs);
+    if ($labels === []) {
+        return '';
+    }
+
+    $rest = count($labels) - $show;
+    if ($rest > 0) {
+        $labels = array_slice($labels, 0, $show);
+        $labels[] = '+' . $rest . ' more';
+    }
+
+    return implode(' · ', $labels);
+}
+
 /** The header claim, live from `raw_samples`. */
 function recording_line(array $health): string
 {

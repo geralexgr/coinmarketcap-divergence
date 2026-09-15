@@ -76,10 +76,7 @@ if ($reference !== '') {
       // Per-asset axes are fed by a different set of inputs from the market chart —
       // no fear and greed, no exchange reserve — so the hints come from the per-asset
       // declaration rather than being assumed.
-      $hint = static fn(string $axis): string => implode(', ', array_map(
-          static fn(array $i): string => strtolower((string) $i['label']),
-          available_inputs($axis, 'asset')
-      ));
+      $hint = static fn(string $axis): string => axis_hint(available_inputs($axis, 'asset'));
       ?>
       <div id="quadrant" class="quadrant"
            data-voice-hint="<?= h($hint('voice')) ?>"
