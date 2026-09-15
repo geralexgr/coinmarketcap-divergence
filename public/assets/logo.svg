@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"
+     role="img" aria-label="Divergence">
+  <!--
+    The submission mark: the product at 480px. Same grammar as assets/icon.svg —
+    two axes, four quadrants, a trail, and a point at the end of it.
+
+    Voice runs up and is blue; Money runs right and is rust; the two axis colours are
+    carried on the ends of the axes themselves. The point sits low-Voice / high-Money —
+    "Quiet, but leveraged" — which is the reading this tool exists to make visible, and
+    the one no single CoinMarketCap page can show.
+  -->
+  <rect width="480" height="480" fill="#EEF1F0"/>
+
+  <!-- the quadrant the point is in -->
+  <rect x="256" y="240" width="160" height="160" fill="#A34428" opacity="0.14"/>
+
+  <!-- midlines -->
+  <g stroke="#CBD3D1" stroke-width="6" stroke-dasharray="10 16" fill="none">
+    <path d="M256 80 V400 M96 240 H416"/>
+  </g>
+
+  <!-- axes -->
+  <g fill="none" stroke="#B7C1BE" stroke-width="12" stroke-linecap="square">
+    <path d="M96 80 V400 H416"/>
+  </g>
+  <!-- the ends of the axes, in the axis colours: Voice up, Money right -->
+  <g fill="none" stroke-width="12" stroke-linecap="round">
+    <path d="M96 168 V86" stroke="#3A6EA5"/>
+    <path d="M330 400 H410" stroke="#A34428"/>
+  </g>
+
+  <!-- the trail: the part of this that only exists because something was recording -->
+  <path d="M140 356 L178 348 L214 352 L252 334 L296 318 L336 306"
+        fill="none" stroke="#6B7780" stroke-width="10"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+  <g fill="#6B7780" opacity="0.45">
+    <circle cx="140" cy="356" r="5"/>
+    <circle cx="178" cy="348" r="5"/>
+    <circle cx="214" cy="352" r="5"/>
+    <circle cx="252" cy="334" r="5"/>
+    <circle cx="296" cy="318" r="5"/>
+  </g>
+
+  <!-- where it is now -->
+  <circle cx="336" cy="306" r="52" fill="none" stroke="#A34428" stroke-width="8" opacity="0.35"/>
+  <circle cx="336" cy="306" r="27" fill="#A34428"/>
+</svg>
