@@ -61,7 +61,8 @@ liquidations, open interest against volume, and turnover.
 
 D10 recorded that the derivatives endpoints did not exist, after probing 38 paths. **That was
 wrong** — they live under `/v5/`, and the original sweep covered `/v1/`–`/v4/` only. D20 is the
-correction and `METHOD_VERSION` 2 is the axis rebuilt on them. The turnover-and-substitutes version
+correction and `METHOD_VERSION` 2 was the axis rebuilt on them; the current version is 3, set in
+`app/scoring/inputs.php`, which is the only place it is declared. The turnover-and-substitutes version
 of the axis is kept at weight zero rather than deleted, so what the axis used to be stays legible.
 If you read a claim in this repo that something is absent from the API, check which versions were
 swept before repeating it.

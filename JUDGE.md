@@ -76,7 +76,7 @@ cd coinmarketcap-divergence
 php tests/run.php
 ```
 
-84 tests, no framework, no network, no database, no composer. They cover the parts that fail
+90 tests, no framework, no network, no database, no composer. They cover the parts that fail
 *silently*: normalisation boundaries, a missing input being scored as zero, a percentile that peeks
 at the future, and the readout copy being grepped for future-tense words.
 

@@ -79,13 +79,15 @@ reconstruct.
 
 ### What a reading actually tells you
 
-The live site at the time of writing:
+The live site at the time of writing — check it against
+[`/api/market.php`](https://coinmarketcap.geralexgr.com/api/market.php), which returns the same
+numbers with the endpoint and sample minute behind each one:
 
-> **Voice 66 · Money 39 · Divergence −27 — "Chatter without conviction"**
+> **Voice 83 · Money 49 · Divergence −34 — "Chatter without conviction"**
 
-Read that as: the fear and greed index is well into greed, but open interest, funding and
-liquidations are all subdued. People are *talking* like it is a bull market and *positioning* like
-it is not. That is a fact about right now, checkable against CoinMarketCap in about a minute — and
+Read that as: the fear and greed index sits at 65, which is the 83rd percentile of its own last 500
+days, while open interest, funding and liquidations are middling. People are *talking* like it is a
+bull market and *positioning* like it is not. That is a fact about right now, checkable against CoinMarketCap in about a minute — and
 it is not a number you can read off any single page there.
 
 Flip it and you get the reading the tool was built to find: **low Voice, high Money** — nobody is
@@ -125,11 +127,15 @@ anyone, at any later date.
 Every input in the right-hand column carries the endpoint it came from and the minute it was
 sampled, so any number here can be checked against CoinMarketCap directly.
 
-*This one is from a local run against seeded history, because the live deployment started recording
-on 13 September and its Voice axis has not stepped yet — the fear and greed index updates once a
-day, so the live trail is currently a straight horizontal line. A picture of a straight line would
-say less about the product than this does. The two shots below are live, and this one gets replaced
-the moment the real trail has shape.*
+*Live, from the deployment.* This shot replaces an earlier one taken against seeded history: on 13
+September the live Voice axis had not stepped yet, so the real trail was a single horizontal line
+and a picture of it would have said less about the product than a seeded run did. It has since
+stepped nine times. Everything above is now recorded, and every screenshot in this README is
+reproducible with `./docs/screenshots/capture.sh`.
+
+The Voice axis still steps once a day, which is what the horizontal runs in the trail are. That is
+the plan's limit, not the market's, and it is stated [below](#read-this-second-what-the-api-plan-costs-the-method)
+and on the screen itself.
 
 ### The screener
 
@@ -227,8 +233,9 @@ forbidden inputs stay declared in the method at their intended weights and light
 the plan changes — see [D16](docs/decisions.md).
 
 **The Money axis measures real leverage.** Open interest, funding rate and liquidations, from the
-`/v5/` derivatives family — $76.6bn of BTC open interest, funding weighted by open interest across
-every venue, and 24h liquidations split long from short.
+`/v5/` derivatives family — $104.9bn of BTC open interest as at 15 Sep 2026, funding weighted by
+open interest across every venue, and 24h liquidations split long from short. Those are readings,
+not constants; the live ones are on the [market page](https://coinmarketcap.geralexgr.com).
 
 Getting there involved being wrong in public first. This repo spent two days documenting, after
 probing 38 paths, that the CoinMarketCap API has **no** derivatives endpoints — because the probe
@@ -374,7 +381,11 @@ Seven tools, none of which takes a write action. Surface: [`docs/mcp-tools.md`](
 
 ## CoinMarketCap endpoints used
 
-Ten endpoints, every one of them polled and feeding a score. Verified against the live API rather
+Nine endpoints. Six are polled and feed a score; `key_info` is polled for the credit budget and
+costs nothing; `fear_and_greed_historical` was fetched once, not on a cron; and
+`derivatives_exchanges` is verified and reserved, not yet polled, because the concentration input
+it would feed is declared at weight zero until there is enough history to set its range by
+measurement. Each row below says which. Verified against the live API rather
 than read off the documentation — `app/bin/verify-endpoints.php` measures what the key may actually
 call, and `endpoint_access_results()` encodes the result so the poller cannot schedule something it
 cannot reach.
@@ -385,7 +396,7 @@ cannot reach.
 | Voice | `/v3/fear-and-greed/historical` | **500 days of index history** — fetched once, not on a cron ([D22](docs/decisions.md)) | 1, once |
 | **Money** | `/v5/cryptocurrency/derivatives/market-pairs/list/latest` | **open interest, funding rate, basis** | 1 |
 | **Money** | `/v5/derivatives/liquidations/cryptocurrency/list/latest` | **long and short liquidations** — 200 assets per credit | 1 |
-| **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest | 1 |
+| **Money** | `/v5/exchange/derivatives/list` | per-venue derivative volume and open interest — **verified, not yet polled**, weight zero | 1 |
 | Money | `/v1/global-metrics/quotes/latest` | turnover, derivative share of activity | 1 |
 | Money | `/v1/exchange/assets` | exchange reserve level, and its movement | 1 |
 | Both | `/v1/cryptocurrency/listings/latest` | the asset universe **and every callable per-asset input**, `limit=200` | 1 |
@@ -501,7 +512,7 @@ divergence/
 │
 ├── public/                ← the document root, and the ONLY web-served directory
 │
-├── tests/                 84 tests, no framework, no network, no database
+├── tests/                 90 tests, no framework, no network, no database
 └── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
 
@@ -520,8 +531,9 @@ root.
 - **Per-endpoint cadence**, because one interval for everything wasted most of the budget: the
   once-a-day fear and greed index was being fetched every tick for an identical value while the
   leverage inputs genuinely move. Open interest, funding and liquidations every 15 minutes; the
-  universe every 30; reserves every 2 hours; sentiment every 3. **404 credits a day**, 19% under
-  budget — cheaper than the old schedule *and* carrying three more inputs.
+  universe every 30; reserves every 2 hours; sentiment every 3. **356 credits a day**, 29% under
+  budget — cheaper than the old schedule *and* carrying three more inputs. It was 404 until
+  `quotes_latest` was retired for duplicating data already on disk ([D23](docs/decisions.md)).
 - **The host enforces a 15-minute cron floor** and silently rewrites anything faster. Per-endpoint
   cadence absorbs it completely: the poller is a cheap tick that decides what is due, so every
   endpoint still gets the interval it declares. Under the previous design the same rewrite would
