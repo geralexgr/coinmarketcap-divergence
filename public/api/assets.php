@@ -54,12 +54,10 @@ if ($view === 'movers' || $view === 'crossings') {
         : asset_divergence_movers($pdo, METHOD_VERSION, $hours, $limit, $withStables);
 
     // Both ends of every comparison, so a consumer can check the change rather than
-    // trust it — and so an empty result is legibly "no cross-section that old" rather
-    // than "nothing moved".
-    $window = [
-        'hours'        => $hours,
-        'from'         => $rows === [] ? null : $rows[0]['sampled_at_then'],
-        'to'           => $rows === [] ? null : $rows[0]['sampled_at'],
+    // trust it — and so an empty result carries the reason it is empty rather than
+    // reading as "nothing moved". `comparable` is false when the two cross-sections
+    // were ranked against universes of different size; see asset_movers_window().
+    $window = asset_movers_window($pdo, METHOD_VERSION, $hours) + [
         'measured_for' => 'every row, over the same two recorded cross-sections',
     ];
 } else {

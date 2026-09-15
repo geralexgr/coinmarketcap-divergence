@@ -54,8 +54,13 @@ sampled_at_then }`, alongside the `from` and `to` sample times.
 Both ends of every comparison are carried on the row, so the change is checkable rather than
 asserted, and every asset is measured between the *same* two cross-sections. An asset missing from
 the baseline yields no row rather than a change measured against whatever was nearest — which would
-report a recording gap as market movement. An empty result means no cross-section that old was
-recorded, not that nothing moved.
+report a recording gap as market movement.
+
+**An empty result always carries `comparable` and `reason`**, so it never reads as "nothing moved".
+The comparison is refused outright when the tracked universe changed size between the two
+cross-sections: a per-asset score is a rank against the universe at that instant, so a difference
+taken across that boundary is mostly the boundary ([D24](decisions.md)). It resolves itself once
+both ends fall on the same side of the change.
 
 A measurement of a past interval. It says nothing about the next one.
 

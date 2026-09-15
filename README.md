@@ -108,7 +108,7 @@ It is a **measuring instrument, not an advisor**. It will never tell you what to
 | **It records.** | CoinMarketCap publishes no historical endpoint for open interest, funding, liquidations, turnover or exchange flow. Price history can be fetched retroactively; the Money axis cannot, at all. (Sentiment can — 500 days of it, and this project fetches it: [D22](docs/decisions.md).) Every point of the Money half of the trail exists only because something was recording at the time, and it compounds daily. |
 | **The method is data, not prose.** | `app/scoring/inputs.php` declares every input, weight and range. The scorer runs from it and the public method page renders from it, so the page *cannot* describe a method the code does not implement. |
 | **It measures, never predicts.** | No signals, no entry levels, no buy/sell. A measurement can be checked against CoinMarketCap in thirty seconds; a prediction cannot be checked at all. There is a test that greps the generated copy for future-tense words. |
-| **The mistakes are in the repo.** | 23 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
+| **The mistakes are in the repo.** | 24 decisions with reasoning, including [D20](docs/decisions.md) — where we documented for two days that the derivatives endpoints did not exist, were wrong, and recorded how the error was possible. |
 | **Missing inputs are dropped, not zeroed.** | Ten of the twenty endpoints in the catalogue are 403 on this key. Scores record how many inputs they actually used, and the app prints it. A zero would read as a quiet market; absence is a measurement of nothing. |
 
 ---
@@ -501,7 +501,7 @@ divergence/
 │
 ├── public/                ← the document root, and the ONLY web-served directory
 │
-├── tests/                 82 tests, no framework, no network, no database
+├── tests/                 84 tests, no framework, no network, no database
 └── docs/                  schema.sql · method · data model · decisions · limits · API friction
 ```
 

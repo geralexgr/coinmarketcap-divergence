@@ -193,6 +193,118 @@ function latest_asset_scores(
 }
 
 /**
+ * How many assets were in one recorded cross-section.
+ *
+ * Derived by counting rows rather than stored on them, so it needs no column and works
+ * over history already on disk.
+ */
+function asset_cross_section_size(PDO $pdo, int $methodVersion, string $at): int
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM scores WHERE scope = ? AND method_version = ? AND sampled_at = ?'
+    );
+    $stmt->execute(['asset', $methodVersion, $at]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+/**
+ * The two cross-sections a movers comparison would run between, and whether comparing
+ * them actually measures anything.
+ *
+ * **Why this check has to exist.** A per-asset score is a percentile rank against the
+ * rest of the universe at that instant (D17) — not against the asset's own past. So the
+ * comparison set is part of the measurement, and if the universe changed size between
+ * the two cross-sections, every rank in one of them was taken against a different
+ * population. The difference is then mostly an artefact of the change.
+ *
+ * This is not hypothetical. Raising the universe from 100 to 200 assets (D23) produced a
+ * live movers table with a **median absolute change of 31 points and 52 of 86 assets
+ * crossing a midline in 24 hours** — none of which was market movement. An asset ranked
+ * 50th of 100 sits at the 50th percentile; ranked 50th of 200 it sits at the 75th, and
+ * it did not move.
+ *
+ * So the window reports itself as not comparable and the movers table shows nothing with
+ * a reason, the same way a recording gap is shown as a gap rather than interpolated
+ * across. It is self-healing: once both ends of the window fall after the change, the
+ * table returns on its own.
+ *
+ * `$sizeTolerance` is the fraction the two cross-sections may differ by and still be
+ * compared. Natural rank churn moves a handful of assets in and out of the top 200 each
+ * day, which is noise at this scale; a deliberate change to `asset_universe` is not.
+ *
+ * @return array{
+ *   from:?string, to:?string, from_size:int, to_size:int,
+ *   hours:int, comparable:bool, reason:?string
+ * }
+ */
+function asset_movers_window(
+    PDO $pdo,
+    int $methodVersion,
+    int $hours = 24,
+    int $toleranceHours = 12,
+    float $sizeTolerance = 0.10
+): array {
+    $blank = [
+        'from' => null, 'to' => null, 'from_size' => 0, 'to_size' => 0,
+        'hours' => $hours, 'comparable' => false, 'reason' => null,
+    ];
+
+    $latest = $pdo->prepare('SELECT MAX(sampled_at) FROM scores WHERE scope = ? AND method_version = ?');
+    $latest->execute(['asset', $methodVersion]);
+    $now = $latest->fetchColumn();
+    if ($now === false || $now === null) {
+        return ['reason' => 'No per-asset scores have been recorded yet.'] + $blank;
+    }
+
+    $baselineAt = $pdo->prepare(
+        'SELECT MAX(sampled_at) FROM scores
+          WHERE scope = ? AND method_version = ?
+            AND sampled_at <= DATE_SUB(?, INTERVAL ? HOUR)
+            AND sampled_at >= DATE_SUB(?, INTERVAL ? HOUR)'
+    );
+    $baselineAt->execute(['asset', $methodVersion, $now, $hours, $now, $hours + $toleranceHours]);
+    $then = $baselineAt->fetchColumn();
+    if ($then === false || $then === null) {
+        return [
+            'to'     => (string) $now,
+            'reason' => 'No cross-section was recorded far enough back to compare against. '
+                      . 'Both ends of a comparison have to be samples that were actually taken.',
+        ] + $blank;
+    }
+
+    $toSize   = asset_cross_section_size($pdo, $methodVersion, (string) $now);
+    $fromSize = asset_cross_section_size($pdo, $methodVersion, (string) $then);
+
+    $window = [
+        'from' => (string) $then, 'to' => (string) $now,
+        'from_size' => $fromSize, 'to_size' => $toSize,
+        'hours' => $hours, 'comparable' => true, 'reason' => null,
+    ];
+
+    $larger = max($fromSize, $toSize);
+    if ($larger === 0) {
+        return ['comparable' => false, 'reason' => 'One of the two cross-sections is empty.'] + $window;
+    }
+
+    if (abs($toSize - $fromSize) / $larger > $sizeTolerance) {
+        return [
+            'comparable' => false,
+            'reason'     => sprintf(
+                'The tracked universe changed size between these two samples — %d assets then, '
+                . '%d now. Per-asset scores are ranks against the universe at that instant, so a '
+                . 'change measured across that boundary would mostly be the boundary. This returns '
+                . 'on its own once both ends fall on the same side of it.',
+                $fromSize,
+                $toSize
+            ),
+        ] + $window;
+    }
+
+    return $window;
+}
+
+/**
  * Assets whose gap moved the most, rather than whose gap is the largest.
  *
  * The `gap` sort answers "where is the market most divergent right now", and it answers
@@ -218,6 +330,12 @@ function latest_asset_scores(
  * whatever happened to be nearest, which would report a recording gap as market
  * movement.
  *
+ * The same reasoning applied one level up is `asset_movers_window()`: if the *universe*
+ * changed size between the two cross-sections, every rank in one of them was taken
+ * against a different population and the whole comparison is abandoned with a reason.
+ * Read that docblock before changing anything here — the first version of this function
+ * shipped without the check and reported a universe change as a 31-point median move.
+ *
  * @return array<int,array<string,mixed>>
  */
 function asset_divergence_movers(
@@ -228,24 +346,13 @@ function asset_divergence_movers(
     bool $includeStablecoins = false,
     int $toleranceHours = 12
 ): array {
-    $latest = $pdo->prepare('SELECT MAX(sampled_at) FROM scores WHERE scope = ? AND method_version = ?');
-    $latest->execute(['asset', $methodVersion]);
-    $now = $latest->fetchColumn();
-    if ($now === false || $now === null) {
+    $window = asset_movers_window($pdo, $methodVersion, $hours, $toleranceHours);
+    if (!$window['comparable']) {
         return [];
     }
 
-    $baselineAt = $pdo->prepare(
-        'SELECT MAX(sampled_at) FROM scores
-          WHERE scope = ? AND method_version = ?
-            AND sampled_at <= DATE_SUB(?, INTERVAL ? HOUR)
-            AND sampled_at >= DATE_SUB(?, INTERVAL ? HOUR)'
-    );
-    $baselineAt->execute(['asset', $methodVersion, $now, $hours, $now, $hours + $toleranceHours]);
-    $then = $baselineAt->fetchColumn();
-    if ($then === false || $then === null) {
-        return [];
-    }
+    $now  = $window['to'];
+    $then = $window['from'];
 
     $sql =
         'SELECT n.cmc_id, u.symbol, u.name, u.rank_last, u.is_stablecoin,

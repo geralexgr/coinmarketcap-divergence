@@ -579,6 +579,62 @@ shown and changes no score — every asset is still ranked against the whole rec
 
 ---
 
+## D24 — The comparison set is part of the measurement
+
+**15 September 2026.** A bug found on the live site within an hour of deploying D23.
+
+The movers table ([D23](#d23--double-the-universe-by-spending-nothing-and-rank-movement-as-well-as-size))
+went up alongside the universe change from 100 to 200 assets, and immediately reported a
+**median absolute change of 31 points, with 52 of 86 assets crossing a midline in 24 hours.**
+Six of the top rows had moved by more than 80 points. None of it was market movement.
+
+Per-asset scores are percentile ranks against the rest of the universe at that instant
+([D17](decisions.md)) — not against the asset's own past. So the comparison set is part of
+the measurement. An asset ranked 50th of 100 sits at the 50th percentile; ranked 50th of
+200 it sits at the 75th, and it has not moved. Both cross-sections were internally
+correct and the difference between them was mostly the boundary.
+
+The irony is on the record: `asset_divergence_movers()` shipped with a docblock explaining
+that an asset missing from the baseline yields no row, "rather than a change measured
+against whatever happened to be nearest, which would report a recording gap as market
+movement" — and then compared two cross-sections of different sizes without checking.
+
+**Settled: `asset_movers_window()` decides whether the two cross-sections can be compared
+at all**, and the movers table shows the reason instead of the numbers when they cannot.
+Comparable means within 10% of each other in size: natural rank churn moves a handful of
+assets in and out of the top 200 daily, which is noise at this scale, while a deliberate
+change to `asset_universe` is not.
+
+**Derived by counting rows, not stored on them.** `asset_cross_section_size()` counts
+score rows at a given `sampled_at`, so the check needs no column, no migration, and works
+over history already on disk.
+
+**It is self-healing.** Once both ends of the window fall on the same side of the change,
+the table returns on its own — roughly 24 hours after a universe change, for the 24-hour
+window. No intervention, and no stale flag to remember to clear.
+
+**Why refuse rather than flag and show.** A contaminated +101 with a caveat beside it is
+still a number a reader will take away. The product's rule is that every figure is a
+measurement that can be checked against CoinMarketCap; a figure that is mostly an artefact
+of a config change fails that test, and showing it with an asterisk would be the kind of
+hedge this repo does not do elsewhere. The same argument as gaps being drawn as gaps.
+
+**Three display fixes went with it**, all from the same root — the score and its input are
+no longer the same number now that Voice is on the percentile basis (D22):
+
+- The chart's Voice axis named its input ("fear and greed index") while plotting a rank of
+  it. The index read 67 and the axis plotted 88. It now reads "fear and greed index —
+  ranked against 500 days".
+- The readout panel showed "Fear and greed index 67" beside a Voice score of 88 with
+  nothing reconciling them, inviting a reader to conclude the arithmetic was broken. It
+  now says so in one line, with the figures in it.
+- `api/market.php` carried only the row-summary `basis`, which is the weaker of the two
+  axes and so read "fixed" on a row whose Voice axis was on percentile. It now carries
+  `voice_basis` and `money_basis`. JUDGE.md sends people to that endpoint to check the
+  arithmetic; it has to carry enough to do it.
+
+---
+
 ## Still undecided
 
 Nothing blocking. These are refinements that need data the deployment has not yet produced:

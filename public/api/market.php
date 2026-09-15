@@ -43,7 +43,11 @@ echo json_encode([
     'quadrant'       => $current['quadrant'],
     'quadrant_label' => quadrant_label($current['quadrant']),
     'reading'        => divergence_sentence($current['divergence']),
+    // The row summary is the weaker of the two axes, so the per-axis values are what a
+    // consumer needs to know how each score was produced (D22).
     'basis'          => $current['basis'],
+    'voice_basis'    => $current['voice_basis'] ?? null,
+    'money_basis'    => $current['money_basis'] ?? null,
     'method_version' => $current['method_version'],
     'inputs_used'    => ['voice' => $current['voice_inputs'], 'money' => $current['money_inputs']],
     'inputs' => (static function (PDO $pdo): array {
